@@ -84,7 +84,6 @@ RUN mkdir -p /app/zipstorage /app/unzipstorage && \
 COPY --from=deps --chown=nestjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder --chown=nestjs:nodejs /app/dist ./dist
-COPY --from=builder --chown=nestjs:nodejs /app/generated ./generated
 COPY --chown=nestjs:nodejs package.json ./
 
 USER nestjs
