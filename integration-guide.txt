@@ -1,0 +1,609 @@
+
++28
+Lines changed: 28 additions & 0 deletions
+Original file line number	Diff line number	Diff line change
+@@ -36,6 +36,7 @@ model User {
+  spaceAssets  SpaceAsset[]
+  chatSessions ChatSession[]
+  enable3Redemptions     Enable3Redemption[]
+}
+
+model SpaceAsset {
+@@ -383,4 +384,31 @@ enum StreamStatus {
+  TIMEOUT      // Stream timed out
+}
+
+// Enable3 Loyalty Redemption Tracking
+model Enable3Redemption {
+  id             String                  @id @default(cuid())
+  userId         String
+  transactionId  String                  @unique // Enable3 transaction ID (idempotency key)
+  tokenAmount    Float // LFR points redeemed
+  creditsAwarded Float // Credits given to user
+  tokenRate      Float // Exchange rate at time of redemption
+  usdcAmount     Float? // USDC equivalent (from Enable3)
+  optionId       String? // Reward option selected
+  productId      String? // Purchase product ID
+  status         Enable3RedemptionStatus @default(COMPLETED)
+  createdAt      DateTime                @default(now())
+  enable3Date    DateTime? // Original date from Enable3
+  user           User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+  @@index([transactionId])
+  @@index([createdAt])
+}
+enum Enable3RedemptionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+‎src/app.module.ts‎
++2
+Lines changed: 2 additions & 0 deletions
+Original file line number	Diff line number	Diff line change
+@@ -13,6 +13,7 @@ import { PaymentsModule } from './payments/payments.module';
+import { UsersModule } from './users/user.module';
+import { ChatModule } from './chat/chat.module';
+import { CourseGenerationModule } from './course-generation/course-generation.module';
+import { Enable3Module } from './enable3/enable3.module';
+import { CacheModule } from '@nestjs/cache-manager';
+import * as redisStore from 'cache-manager-redis-store';
+
+@@ -96,6 +97,7 @@ import * as redisStore from 'cache-manager-redis-store';
+        UsersModule,
+        ChatModule,
+        CourseGenerationModule,
+        Enable3Module,
+    ],
+    controllers: [AppController],
+    providers: [
+‎src/auth/auth.module.ts‎
++4
+Lines changed: 4 additions & 0 deletions
+Original file line number	Diff line number	Diff line change
+@@ -37,6 +37,10 @@ export class AuthModule implements NestModule {
+                    path: '/shared/:shareToken',
+                    method: RequestMethod.GET,
+                },
+                 {
+                    path: '/api/enable3/webhook/withdrawal',
+                    method: RequestMethod.POST,
+            },
+            )
+            .forRoutes('*');
+    }
+‎src/enable3/dto/enable3-webhook.dto.ts‎
++68
+Lines changed: 68 additions & 0 deletions
+Original file line number	Diff line number	Diff line change
+@@ -0,0 +1,68 @@
+import { IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+/**
+ * DTO for Enable3 Withdrawal Webhook
+ * Sent by Enable3 when a user redeems their loyalty points
+ */
+export class Enable3WithdrawalDto {
+  @ApiProperty({ description: 'User ID (your internal user.id/cuid)' })
+  @IsString()
+  @IsNotEmpty()
+  userId: string;
+  @ApiPropertyOptional({ description: 'Reward option ID selected by user' })
+  @IsOptional()
+  @IsString()
+  optionId?: string;
+  @ApiPropertyOptional({
+    description: 'Your assigned product ID in Enable3 admin',
+  })
+  @IsOptional()
+  @IsString()
+  purchaseProductId?: string;
+  @ApiProperty({ description: 'Amount in USDC equivalent' })
+  @IsNumber()
+  amount: number;
+  @ApiProperty({ description: 'Amount in OBOE tokens (loyalty points)' })
+  @IsNumber()
+  tokenAmount: number;
+  @ApiProperty({ description: 'Token exchange rate' })
+  @IsNumber()
+  tokenRate: number;
+  @ApiProperty({
+    description: 'Unique transaction ID from Enable3 (for idempotency)',
+  })
+  @IsString()
+  @IsNotEmpty()
+  transactionId: string;
+  @ApiProperty({
+    description: 'Datetime when user requested withdrawal',
+    example: '2026-01-07T10:00:00.000000',
+  })
+  @IsString()
+  @IsNotEmpty()
+  createdAt: string;
+}
+/**
+ * Response DTO for Enable3 webhook
+ */
+export class Enable3WebhookResponseDto {
+  @ApiProperty({
+    description: 'Whether the webhook was processed successfully',
+  })
+  success: boolean;
+  @ApiPropertyOptional({ description: 'Error message if processing failed' })
+  message?: string;
+  @ApiPropertyOptional({ description: 'Credits awarded to user' })
+  creditsAwarded?: number;
+}
+‎src/enable3/dto/index.ts‎
++1
+Lines changed: 1 addition & 0 deletions
+Original file line number	Diff line number	Diff line change
+@@ -0,0 +1 @@
+export * from './enable3-webhook.dto';
+‎src/enable3/enable3.controller.ts‎
++223
+Lines changed: 223 additions & 0 deletions
+Original file line number	Diff line number	Diff line change
+@@ -0,0 +1,223 @@
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Logger,
+  Post,
+  RawBodyRequest,
+  Req,
+  UnauthorizedException,
+  BadRequestException,
+  InternalServerErrorException,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  ApiHeader,
+} from '@nestjs/swagger';
+import { Enable3Service } from './enable3.service';
+import {
+  Enable3WithdrawalDto,
+  Enable3WebhookResponseDto,
+} from './dto/enable3-webhook.dto';
+import { Request } from 'express';
+@ApiTags('Enable3 Loyalty')
+@Controller('api/enable3')
+export class Enable3Controller {
+  private readonly logger = new Logger(Enable3Controller.name);
+  constructor(private readonly enable3Service: Enable3Service) {}
+  /**
+   * Enable3 Withdrawal Webhook
+   * Called by Enable3 when a user redeems their loyalty points for credits
+   */
+  @Post('webhook/withdrawal')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Enable3 Withdrawal Webhook',
+    description:
+      'Receives withdrawal events from Enable3 when users redeem loyalty points',
+  })
+  @ApiHeader({
+    name: 'X-REQUEST-SIGNATURE',
+    description: 'Enable3 webhook signature for verification',
+    required: false,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Withdrawal processed successfully',
+    type: Enable3WebhookResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid payload structure',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid webhook signature',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'User not found',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Transaction already processed (idempotency)',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Internal server error',
+  })
+  async handleWithdrawal(
+    @Body() dto: Enable3WithdrawalDto,
+    @Headers('X-REQUEST-SIGNATURE') signature: string,
+    @Req() req: RawBodyRequest<Request>,
+  ): Promise<Enable3WebhookResponseDto> {
+    this.logger.log('Received Enable3 withdrawal webhook');
+    console.log({ body: dto });
+    // Input validation - check required fields
+    if (!dto?.userId || !dto?.transactionId) {
+      this.logger.error(
+        'Invalid Enable3 withdrawal payload - missing required fields',
+      );
+      throw new BadRequestException(
+        'Invalid payload structure - missing userId or transactionId',
+      );
+    }
+    if (typeof dto.tokenAmount !== 'number' || dto.tokenAmount <= 0) {
+      this.logger.error(`Invalid tokenAmount: ${dto.tokenAmount}`);
+      throw new BadRequestException(`Invalid tokenAmount: ${dto.tokenAmount}`);
+    }
+    this.logger.debug(`User ID: ${dto.userId}`);
+    this.logger.debug(`Transaction ID: ${dto.transactionId}`);
+    this.logger.debug(`Token Amount: ${dto.tokenAmount} OBOE`);
+    try {
+      // Get raw body for signature verification
+      const rawBody = req.rawBody?.toString() || JSON.stringify(dto);
+      // Verify signature (skip in development if needed)
+      if (process.env.NODE_ENV === 'production' || signature) {
+        if (!signature) {
+          this.logger.error('Missing X-REQUEST-SIGNATURE header');
+          throw new UnauthorizedException('Missing webhook signature');
+        }
+        const isValid = this.enable3Service.verifySignature(rawBody, signature);
+        if (!isValid) {
+          this.logger.error('Invalid webhook signature');
+          throw new UnauthorizedException('Invalid webhook signature');
+        }
+        this.logger.log('Webhook signature verified successfully');
+      } else {
+        this.logger.warn('Skipping signature verification in development mode');
+      }
+      // Process the withdrawal
+      const result = await this.enable3Service.processWithdrawal(dto);
+      this.logger.log(
+        `Successfully processed Enable3 withdrawal for transaction ${dto.transactionId}`,
+      );
+      return {
+        success: result.success,
+        message: result.message,
+        creditsAwarded: result.creditsAwarded,
+      };
+    } catch (error) {
+      // Re-throw known HTTP exceptions
+      if (
+        error instanceof BadRequestException ||
+        error instanceof UnauthorizedException
+      ) {
+        throw error;
+      }
+      // Check for specific error types from service
+      if (error.status === 404 || error.status === 409) {
+        throw error;
+      }
+      // Log unexpected errors and return 500
+      this.logger.error('Error processing Enable3 withdrawal:', error);
+      throw new InternalServerErrorException(
+        'Failed to process withdrawal webhook',
+      );
+    }
+  }
+  /**
+   * Get user's Enable3 redemption history
+   */
+  @Get('redemptions')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get user redemption history',
+    description: 'Returns all Enable3 redemptions for a user',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Redemption history retrieved successfully',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'User not authenticated',
+  })
+  async getUserRedemptions(@Req() req: Request) {
+    const userId = req.user as string;
+    if (!userId) {
+      throw new UnauthorizedException('User not authenticated');
+    }
+    this.logger.log(`Getting redemption history for user: ${userId}`);
+    const redemptions = await this.enable3Service.getUserRedemptions(userId);
+    return {
+      userId,
+      redemptions,
+      totalRedemptions: redemptions.length,
+    };
+  }
+  /**
+   * Get total credits awarded from Enable3
+   */
+  @Get('credits')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get total Enable3 credits',
+    description:
+      'Returns total credits awarded to user from Enable3 redemptions',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Total credits retrieved successfully',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'User not authenticated',
+  })
+  async getTotalEnable3Credits(@Req() req: Request) {
+    const userId = req.user as string;
+    if (!userId) {
+      throw new UnauthorizedException('User not authenticated');
+    }
+    this.logger.log(`Getting total Enable3 credits for user: ${userId}`);
+    const totalCredits =
+      await this.enable3Service.getTotalCreditsFromEnable3(userId);
+    return {
+      userId,
+      totalCreditsFromEnable3: totalCredits,
+    };
+  }
+}
+‎src/enable3/enable3.module.ts‎
++13
+Lines changed: 13 additions & 0 deletions
+Original file line number	Diff line number	Diff line change
+@@ -0,0 +1,13 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { Enable3Controller } from './enable3.controller';
+import { Enable3Service } from './enable3.service';
+import { PrismaService } from 'src/shared/services/prisma.service';
+@Module({
+  imports: [ConfigModule],
+  controllers: [Enable3Controller],
+  providers: [Enable3Service, PrismaService],
+  exports: [Enable3Service],
+})
+export class Enable3Module {}
+‎src/enable3/enable3.service.ts‎
++241
+Lines changed: 241 additions & 0 deletions
+Original file line number	Diff line number	Diff line change
+@@ -0,0 +1,241 @@
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ConflictException,
+  InternalServerErrorException,
+  OnModuleInit,
+  BadRequestException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PrismaService } from 'src/shared/services/prisma.service';
+import { Enable3WithdrawalDto } from './dto/enable3-webhook.dto';
+import * as crypto from 'crypto';
+import { Enable3RedemptionStatus } from '@prisma/client';
+@Injectable()
+export class Enable3Service implements OnModuleInit {
+  private readonly logger = new Logger(Enable3Service.name);
+  // Conversion rate: LFR points to credits
+  // Default: 10 LFR = 1 credit (0.1)
+  private readonly OBOE_TO_CREDITS_RATE: number;
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
+    this.OBOE_TO_CREDITS_RATE = this.configService.get<number>(
+      'ENABLE3_OBOE_TO_CREDITS_RATE',
+      0.1,
+    );
+    this.logger.log(
+      `Enable3 Service initialized. OBOE to Credits rate: ${this.OBOE_TO_CREDITS_RATE}`,
+    );
+  }
+  async onModuleInit() {
+    // Ensure PrismaService is properly connected
+    if (!this.prisma) {
+      throw new InternalServerErrorException('PrismaService not injected');
+    }
+    try {
+      // Test the connection
+      await this.prisma.$connect();
+      this.logger.log(
+        'Enable3 Service: PrismaService successfully initialized',
+      );
+    } catch (error) {
+      this.logger.error('Failed to initialize PrismaService:', error);
+      throw new InternalServerErrorException(error);
+    }
+  }
+  /**
+   * Get the Enable3 webhook secret from environment
+   */
+  private getWebhookSecret(): string {
+    const secret = this.configService.get<string>('ENABLE3_WEBHOOK_SECRET');
+    if (!secret) {
+      throw new Error('ENABLE3_WEBHOOK_SECRET not configured');
+    }
+    return secret;
+  }
+  /**
+   * Verify the webhook signature from Enable3
+   * Enable3 uses MD5 + HMAC-SHA512 for signature
+   */
+  verifySignature(requestBody: string, signature: string): boolean {
+    try {
+      const secret = this.getWebhookSecret();
+      // Calculate expected signature
+      // 1. MD5 hash of request body
+      const md5Hex = crypto.createHash('md5').update(requestBody).digest('hex');
+      // 2. HMAC-SHA512 of the MD5 hash using secret
+      const expectedSignature = crypto
+        .createHmac('sha512', secret)
+        .update(md5Hex)
+        .digest('base64');
+      // 3. Compare signatures
+      return crypto.timingSafeEqual(
+        Buffer.from(signature),
+        Buffer.from(expectedSignature),
+      );
+    } catch (error) {
+      this.logger.error('Error verifying signature:', error);
+      return false;
+    }
+  }
+  /**
+   * Process Enable3 withdrawal/redemption webhook
+   * Converts LFR points to credits and adds them to user's balance
+   */
+  async processWithdrawal(dto: Enable3WithdrawalDto): Promise<{
+    success: boolean;
+    creditsAwarded: number;
+    message: string;
+  }> {
+    this.logger.log(`Processing Enable3 withdrawal for user: ${dto.userId}`);
+    this.logger.debug(`Transaction ID: ${dto.transactionId}`);
+    this.logger.debug(`Token Amount: ${dto.tokenAmount} LFR`);
+    try {
+      // 1. Idempotency check - prevent duplicate processing
+      const existingRedemption = await this.prisma.enable3Redemption.findUnique(
+        {
+          where: { transactionId: dto.transactionId },
+        },
+      );
+      if (existingRedemption) {
+        this.logger.log(
+          `Transaction ${dto.transactionId} already processed, skipping`,
+        );
+        // Return success for idempotency (Enable3 may retry)
+        return {
+          success: true,
+          creditsAwarded: existingRedemption.creditsAwarded,
+          message: `Transaction already processed`,
+        };
+      }
+      // 2. Find user by ID
+      const user = await this.prisma.user.findUnique({
+        where: { id: dto.userId },
+        include: { credits: true },
+      });
+      if (!user) {
+        this.logger.error(`User not found: ${dto.userId}`);
+        throw new NotFoundException(`User not found: ${dto.userId}`);
+      }
+      // 3. Validate tokenAmount
+      if (isNaN(dto.tokenAmount) || dto.tokenAmount <= 0) {
+        throw new BadRequestException(
+          `Invalid tokenAmount: ${dto.tokenAmount}`,
+        );
+      }
+      // 4. Calculate credits to award
+      const creditsToAward = dto.tokenAmount * this.OBOE_TO_CREDITS_RATE;
+      this.logger.log(
+        `Awarding ${creditsToAward} credits to user ${dto.userId} (${dto.tokenAmount} OBOE * ${this.OBOE_TO_CREDITS_RATE})`,
+      );
+      // 5. Parse Enable3 date
+      let enable3Date: Date | null = null;
+      try {
+        enable3Date = new Date(dto.createdAt);
+      } catch {
+        this.logger.warn(`Could not parse Enable3 date: ${dto.createdAt}`);
+      }
+      // 6. Use transaction to ensure atomicity
+      await this.prisma.$transaction(
+        async (tx) => {
+          // Create redemption record
+          await tx.enable3Redemption.create({
+            data: {
+              userId: dto.userId,
+              transactionId: dto.transactionId,
+              tokenAmount: dto.tokenAmount,
+              creditsAwarded: creditsToAward,
+              tokenRate: dto.tokenRate,
+              usdcAmount: dto.amount,
+              optionId: dto.optionId,
+              productId: dto.purchaseProductId,
+              status: Enable3RedemptionStatus.COMPLETED,
+              enable3Date: enable3Date,
+            },
+          });
+          // Update or create user credits
+          if (user.credits) {
+            // User has existing credits - increment availableCredits
+            await tx.credits.update({
+              where: { userId: dto.userId },
+              data: {
+                availableCredits: {
+                  increment: creditsToAward,
+                },
+              },
+            });
+          } else {
+            // User doesn't have credits record - create one
+            await tx.credits.create({
+              data: {
+                userId: dto.userId,
+                availableCredits: creditsToAward,
+                creditUsage: 0,
+              },
+            });
+          }
+        },
+        {
+          timeout: 60000, // Set a timeout for the transaction
+        },
+      );
+      this.logger.log(
+        `Successfully processed Enable3 withdrawal. User: ${dto.userId}, Credits awarded: ${creditsToAward}`,
+      );
+      return {
+        success: true,
+        creditsAwarded: creditsToAward,
+        message: `Successfully awarded ${creditsToAward} credits for ${dto.tokenAmount} LFR`,
+      };
+    } catch (error) {
+      this.logger.error('Error processing Enable3 withdrawal:', error);
+      throw error;
+    }
+  }
+  /**
+   * Get user's Enable3 redemption history
+   */
+  async getUserRedemptions(userId: string) {
+    return this.prisma.enable3Redemption.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+  /**
+   * Get total credits awarded from Enable3 for a user
+   */
+  async getTotalCreditsFromEnable3(userId: string): Promise<number> {
+    const result = await this.prisma.enable3Redemption.aggregate({
+      where: { userId, status: Enable3RedemptionStatus.COMPLETED },
+      _sum: { creditsAwarded: true },
+    });
+    return result._sum.creditsAwarded || 0;
+  }
+}
+‎src/main.ts‎
++3
+-1
+Lines changed: 3 additions & 1 deletion
+Original file line number	Diff line number	Diff line change
+@@ -11,7 +11,9 @@ import { join } from 'path';
+import { mkdirSync, existsSync } from 'fs';
+
+async function bootstrap() {
+    const app = await NestFactory.create<NestExpressApplication>(AppModule);
+    const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true, // Enable raw body for webhook signature verification
+  });
+
+    // Create public/podcasts directory if it doesn't exist
+    const podcastsDir = join(process.cwd(), 'public', 'podcasts');

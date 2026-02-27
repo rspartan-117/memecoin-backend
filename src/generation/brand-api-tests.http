@@ -1,0 +1,339 @@
+// ==========================================
+// Brand.dev API Test Examples
+// ==========================================
+
+// Test these endpoints using your favorite HTTP client
+// (curl, Postman, Insomnia, REST Client VSCode extension, etc.)
+
+// ==========================================
+// 1. BASIC BRAND RETRIEVAL
+// ==========================================
+
+// Simple brand data fetch
+POST http://localhost:3000/brand/retrieve
+Content-Type: application/json
+Authorization: Bearer YOUR_JWT_TOKEN
+
+{
+  "domain": "uniswap.org"
+}
+
+// ---
+
+// Brand data with options
+POST http://localhost:3000/brand/retrieve
+Content-Type: application/json
+
+{
+  "domain": "stripe.com",
+  "maxSpeed": true,
+  "force_language": "english",
+  "timeoutMS": 30000
+}
+
+// ==========================================
+// 2. AI-POWERED DATA EXTRACTION
+// ==========================================
+
+// Extract pricing information
+POST http://localhost:3000/brand/ai-query
+Content-Type: application/json
+
+{
+  "domain": "stripe.com",
+  "data_to_extract": [
+    {
+      "datapoint_name": "starting_price",
+      "datapoint_description": "The starting price for payment processing",
+      "datapoint_example": "$29/month",
+      "datapoint_type": "text"
+    }
+  ],
+  "specific_pages": {
+    "pricing": true
+  }
+}
+
+// ---
+
+// Extract multiple data points with different types
+POST http://localhost:3000/brand/ai-query
+Content-Type: application/json
+
+{
+  "domain": "openai.com",
+  "data_to_extract": [
+    {
+      "datapoint_name": "company_name",
+      "datapoint_description": "Full company name",
+      "datapoint_example": "OpenAI Inc",
+      "datapoint_type": "text"
+    },
+    {
+      "datapoint_name": "employee_count",
+      "datapoint_description": "Number of employees",
+      "datapoint_example": "500",
+      "datapoint_type": "number"
+    },
+    {
+      "datapoint_name": "founded_year",
+      "datapoint_description": "Year the company was founded",
+      "datapoint_example": "2015",
+      "datapoint_type": "number"
+    },
+    {
+      "datapoint_name": "key_products",
+      "datapoint_description": "List of main products or services",
+      "datapoint_example": "ChatGPT",
+      "datapoint_type": "list",
+      "datapoint_list_type": "string"
+    },
+    {
+      "datapoint_name": "is_public",
+      "datapoint_description": "Whether the company is publicly traded",
+      "datapoint_example": "false",
+      "datapoint_type": "boolean"
+    }
+  ],
+  "specific_pages": {
+    "home_page": true,
+    "about_us": true
+  },
+  "timeoutMS": 60000
+}
+
+// ---
+
+// Extract structured list of objects (team members example)
+POST http://localhost:3000/brand/ai-query
+Content-Type: application/json
+
+{
+  "domain": "example.com",
+  "data_to_extract": [
+    {
+      "datapoint_name": "leadership_team",
+      "datapoint_description": "List of leadership team members with their roles",
+      "datapoint_example": "John Doe",
+      "datapoint_type": "list",
+      "datapoint_list_type": "object",
+      "datapoint_object_schema": {
+        "name": "string",
+        "position": "string",
+        "department": "string"
+      }
+    }
+  ],
+  "specific_pages": {
+    "about_us": true
+  }
+}
+
+// ---
+
+// Extract website features
+POST http://localhost:3000/brand/ai-query
+Content-Type: application/json
+
+{
+  "domain": "notion.so",
+  "data_to_extract": [
+    {
+      "datapoint_name": "main_features",
+      "datapoint_description": "Core product features listed on homepage",
+      "datapoint_example": "Real-time collaboration",
+      "datapoint_type": "list",
+      "datapoint_list_type": "string"
+    },
+    {
+      "datapoint_name": "free_tier_available",
+      "datapoint_description": "Whether a free plan is available",
+      "datapoint_example": "true",
+      "datapoint_type": "boolean"
+    },
+    {
+      "datapoint_name": "support_email",
+      "datapoint_description": "Customer support email address",
+      "datapoint_example": "support@example.com",
+      "datapoint_type": "text"
+    }
+  ],
+  "specific_pages": {
+    "home_page": true,
+    "pricing": true,
+    "contact_us": true
+  }
+}
+
+// ==========================================
+// 3. HEALTH & MONITORING
+// ==========================================
+
+// Check service health
+GET http://localhost:3000/brand/health
+
+// ---
+
+// Get cache statistics
+GET http://localhost:3000/brand/cache/stats
+
+// ---
+
+// Clear specific domain cache
+DELETE http://localhost:3000/brand/cache?domain=uniswap.org
+
+// ---
+
+// Clear all cache
+DELETE http://localhost:3000/brand/cache
+
+// ==========================================
+// 4. ADVANCED USE CASES
+// ==========================================
+
+// Crypto project brand analysis
+POST http://localhost:3000/brand/retrieve
+Content-Type: application/json
+
+{
+  "domain": "uniswap.org"
+}
+
+// Response will include:
+// - Brand colors for UI theming
+// - Logos in various formats
+// - Fonts for typography matching
+// - Social media links
+// - Description & slogan
+
+// ---
+
+// Competitor pricing research
+POST http://localhost:3000/brand/ai-query
+Content-Type: application/json
+
+{
+  "domain": "competitor.com",
+  "data_to_extract": [
+    {
+      "datapoint_name": "pricing_tiers",
+      "datapoint_description": "List of pricing tiers with names and prices",
+      "datapoint_example": "Basic - $10/month",
+      "datapoint_type": "list",
+      "datapoint_list_type": "object",
+      "datapoint_object_schema": {
+        "tier_name": "string",
+        "price": "string",
+        "features": "string"
+      }
+    }
+  ],
+  "specific_pages": {
+    "pricing": true
+  }
+}
+
+// ---
+
+// Job listings extraction
+POST http://localhost:3000/brand/ai-query
+Content-Type: application/json
+
+{
+  "domain": "company.com",
+  "data_to_extract": [
+    {
+      "datapoint_name": "open_positions",
+      "datapoint_description": "Number of open job positions",
+      "datapoint_example": "15",
+      "datapoint_type": "number"
+    },
+    {
+      "datapoint_name": "job_titles",
+      "datapoint_description": "List of available job titles",
+      "datapoint_example": "Senior Software Engineer",
+      "datapoint_type": "list",
+      "datapoint_list_type": "string"
+    },
+    {
+      "datapoint_name": "remote_available",
+      "datapoint_description": "Whether remote positions are available",
+      "datapoint_example": "true",
+      "datapoint_type": "boolean"
+    }
+  ],
+  "specific_pages": {
+    "careers": true
+  }
+}
+
+// ==========================================
+// EXPECTED ERROR RESPONSES
+// ==========================================
+
+// Missing required field
+POST http://localhost:3000/brand/retrieve
+Content-Type: application/json
+
+{
+  "forceRefresh": true
+}
+
+// Response: 400 Bad Request
+// {
+//   "statusCode": 400,
+//   "message": ["domain should not be empty"],
+//   "error": "Bad Request"
+// }
+
+// ---
+
+// Missing datapoint_example (required by brand.dev)
+POST http://localhost:3000/brand/ai-query
+Content-Type: application/json
+
+{
+  "domain": "example.com",
+  "data_to_extract": [
+    {
+      "datapoint_name": "price",
+      "datapoint_description": "Product price"
+      // Missing: datapoint_example
+    }
+  ]
+}
+
+// Response: 400 Bad Request
+// {
+//   "statusCode": 400,
+//   "message": ["datapoint_example should not be empty"],
+//   "error": "Bad Request"
+// }
+
+// ---
+
+// API key not configured
+POST http://localhost:3000/brand/retrieve
+Content-Type: application/json
+
+{
+  "domain": "test.com"
+}
+
+// Response: 503 Service Unavailable (if BRAND_DEV_API_KEY not set)
+// {
+//   "success": false,
+//   "error": "BRAND_DEV_API_KEY not configured",
+//   "timestamp": "2026-02-17T10:30:00Z"
+// }
+
+// ==========================================
+// NOTES
+// ==========================================
+
+// 1. Always include datapoint_example - it's REQUIRED
+// 2. Choose correct datapoint_type for better results
+// 3. Use specific_pages to limit scope and reduce processing time
+// 4. AI queries can take 30-60 seconds - set timeoutMS accordingly
+// 5. Cache is automatic - use forceRefresh only when needed
+// 6. Health endpoint doesn't require auth (useful for monitoring)

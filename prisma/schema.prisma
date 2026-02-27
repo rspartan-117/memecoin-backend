@@ -1,0 +1,670 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model users {
+  id                     String             @id @default(dbgenerated("gen_random_uuid()"))
+  username               String?
+  firstName              String?
+  lastName               String?
+  email                  String?            @unique
+  profileImage           String?
+  coverImage             String?
+  description            String?
+  currentPlan            PaymentPlan        @default(FREE)
+  customerId             String?
+  currentPaymentMethodId String?
+  createdAt              DateTime           @default(now())
+  status                 UserStatus         @default(ACTIVE)
+  updatedAt              DateTime           @default(now()) @updatedAt
+  walletAddress          String             @unique
+  githubToken            String?
+  githubUsername         String?
+  canAccessPayments      Boolean       @default(false)
+  ClonedRepository       ClonedRepository[]
+  Collection             Collection[]
+  Credits                Credits?
+  generations            Generation[]
+  PayAsYouGo             PayAsYouGo[]
+  projects               Project[]
+  RefreshToken           RefreshToken?
+  SpaceAsset             SpaceAsset[]
+  Subscription           Subscription[]
+  TopUp                  TopUp?
+  Transaction            Transaction[]
+  Upload                 Upload[]
+  CouponRedemption       CouponRedemption[]
+  assets                 Asset[]
+  enable3Redemptions     Enable3Redemption[]
+  deployments            Deployment[]
+  memeResearchSessions   MemeResearchSession[]
+
+
+  @@map("users")
+
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  expiresAt DateTime
+  userId    String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      users     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Generation {
+  id                   String        @id @default(cuid())
+  userId               String
+  type                 MediaType
+  pipelineType         PipelineType?
+  modelName            String
+  inputPrompt          String
+  title                String?
+  params               Json?
+  falRequestId         String?       @unique
+  status               JobStatus     @default(QUEUED)
+  resultUrl            String?
+  error                String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  imageRequestId       String?       @unique
+  intermediateImageUrl String?
+  assetStatus          AssetStatus   @default(AVAILABLE)
+  assetExpiresAt       DateTime?
+  user                 users          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@index([assetStatus, assetExpiresAt])
+}
+
+model Transaction {
+  id                      String            @id @default(dbgenerated("(gen_random_uuid())::text"))
+  walletAddress           String
+  chainId                 String
+  chainType               ChainType
+  amount                  Float
+  creditsBilled           Float?
+  tokenAddress            String
+  status                  TransactionStatus
+  invoiceId               String?
+  paymentPlan             PaymentPlan
+  tokenDecimals           Int
+  description             String?
+  invoiceRefId            String?
+  payinId                 String?
+  tokenSymbol             String?
+  subscriptionDescription String?
+  userId                  String
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  User                    users              @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Credits {
+  id               String          @id @default(cuid())
+  userId           String          @unique
+  creditUsage      Float?          @default(0)
+  availableCredits Float
+  status           FreePlanStatus? @default(ACTIVE)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  user             users            @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model TopUp {
+  id           String       @id @default(cuid())
+  userId       String       @unique
+  totalCredits Float
+  creditUsage  Float
+  expiryDate   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  status       TopupStatus?
+  user         users         @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PayAsYouGo {
+  id               String            @id @default(cuid())
+  billingFrequency BillingFrequency?
+  nextBillingDate  DateTime?
+  creditUsage      Float
+  status           PayAsYouGoStatus? @default(ACTIVE)
+  userId           String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  user             users              @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id                     String              @id @default(cuid())
+  userId                 String
+  subscriptionPlan       SubscriptionTier
+  billingPeriod          BillingPeriod?
+  subscriptionBuyDate    DateTime?
+  nextBillingDate        DateTime?
+  subscriptionCancelDate DateTime?
+  subscriptionStatus     SubscriptionStatus?
+  totalCredits           Float
+  creditUsage            Float
+  subscriptionRefId      String?
+  nextResetDate          DateTime?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  user                   users                @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SpaceAsset {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String   @unique
+  fileName  String?
+  fileUrl   String?
+  fileSize  String?
+  noOfPages String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      users     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([fileName])
+}
+
+model Upload {
+  id        String   @id @default(cuid())
+  userId    String
+  fileName  String
+  s3Key     String
+  fileType  String
+  status    String
+  fileSize  Int?
+  mimeType  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      users     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId])
+  @@index([status])
+  @@index([userId], map: "idx_upload_userId")
+}
+
+model ClonedRepository {
+  id        String   @id @default(cuid())
+  userId    String
+  repoUrl   String
+  repoName  String
+  localPath String
+  clonedAt  DateTime @default(now())
+  user      users     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId], map: "idx_clonedrepository_userId")
+}
+
+model Project {
+  id                String           @id @db.VarChar
+  userId            String           @db.VarChar
+  name              String           @db.VarChar(255)
+  description       String?
+  type              String           @default("LANDING_PAGE") @db.VarChar(50)
+  active_sandbox_id String?          @db.VarChar
+  sandbox_state     SandboxState
+  created_at        DateTime         @default(now()) @db.Timestamp(6)
+  updated_at        DateTime         @default(now()) @db.Timestamp(6)
+  status            SessionStatus
+  last_active       DateTime         @default(now()) @db.Timestamp(6)
+  ended_at          DateTime?        @db.Timestamp(6)
+  metadata          Json?
+  githubRepoUrl     String?
+  user              users             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project_files     ProjectFile[]
+  project_thoughts  ProjectThought[]
+  assets            Asset[]
+  deployment        Deployment?
+
+  @@index([userId], map: "ix_projects_user_id")
+  @@index([type])
+  @@map("Project")
+}
+
+model ProjectFile {
+  id              String    @id @db.VarChar
+  project_id      String    @db.VarChar
+  file_path       String    @db.VarChar(500)
+  content         String
+  size_bytes      Int
+  mime_type       String?   @db.VarChar(100)
+  is_deleted      Boolean
+  deleted_at      DateTime? @db.Timestamp(6)
+  created_by_tool String    @db.VarChar(100)
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+  updated_at      DateTime? @default(now()) @db.Timestamp(6)
+  project         Project   @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_projectfile_project")
+
+  @@unique([project_id, file_path], map: "uq_project_file_path")
+  @@index([project_id], map: "idx_projectfile_project_id")
+  @@map("ProjectFile")
+}
+
+model ProjectThought {
+  id           String    @id @db.VarChar
+  project_id   String    @db.VarChar
+  thought      String
+  thought_type String    @db.VarChar(50)
+  phase        String?   @db.VarChar(100)
+  milestone    String?   @db.VarChar(255)
+  priority     String    @db.VarChar(20)
+  timestamp    DateTime? @default(now()) @db.Timestamp(6)
+  project      Project   @relation(fields: [project_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_projectthought_project")
+
+  @@index([project_id], map: "idx_projectthought_project_id")
+  @@map("ProjectThought")
+}
+
+model checkpoint_blobs {
+  thread_id     String
+  checkpoint_ns String @default("")
+  channel       String
+  version       String
+  type          String
+  blob          Bytes?
+
+  @@id([thread_id, checkpoint_ns, channel, version])
+}
+
+model checkpoint_writes {
+  thread_id     String
+  checkpoint_ns String  @default("")
+  checkpoint_id String
+  task_id       String
+  idx           Int
+  channel       String
+  type          String?
+  blob          Bytes
+  task_path     String  @default("")
+
+  @@id([thread_id, checkpoint_ns, checkpoint_id, task_id, idx])
+}
+
+model checkpoints {
+  thread_id            String
+  checkpoint_ns        String  @default("")
+  checkpoint_id        String
+  parent_checkpoint_id String?
+  type                 String?
+  checkpoint           Json
+  metadata             Json    @default("{}")
+
+  @@id([thread_id, checkpoint_ns, checkpoint_id])
+}
+
+model store {
+  prefix      String
+  key         String
+  value       Json
+  created_at  DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime? @default(now()) @db.Timestamptz(6)
+  expires_at  DateTime? @db.Timestamptz(6)
+  ttl_minutes Int?
+
+  @@id([prefix, key])
+}
+
+model Collection {
+  id              String   @id @default(cuid())
+  userId          String
+  collectionId    String   @unique
+  projectId       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  contractAddress String?
+  chainId         String?
+  contractType    String?
+  user            users     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([collectionId])
+  @@index([userId])
+}
+
+model Coupon {
+  id           String             @id @default(cuid())
+  code         String             @unique
+  creditAmount Float
+  isActive     Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  redemptions  CouponRedemption[]
+
+  @@index([code])
+}
+
+model CouponRedemption {
+  id        String   @id @default(cuid())
+  userId    String
+  couponId  String
+  coupon    Coupon   @relation(fields: [couponId], references: [id])
+  user      users     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, couponId])
+  @@index([userId])
+  @@index([couponId])
+}
+
+// ========= ASSETS (images, files) =========
+model Asset {
+  id        String  @id @default(cuid()) @db.VarChar(191)
+  
+  // User relation (required)
+  userId    String  @db.VarChar(191)
+  user      users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Project relation (optional - assets can exist without a project)
+  projectId String?  @db.VarChar(191)
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // Asset type and source
+  type   AssetType   @default(IMAGE)
+  source AssetSource @default(AI_GENERATED)
+
+  // Generation-specific fields
+  mediaType    MediaType  @default(IMAGE)
+  modelName    String     @db.VarChar(255)
+  inputPrompt  String     @db.Text
+  params       Json?
+  
+  falRequestId String?    @unique @db.VarChar(255)
+  status       JobStatus  @default(QUEUED)
+  error        String?    @db.Text
+  
+  // Credit tracking for generations
+  creditsUsed  Float      @default(0)
+
+  // Asset URLs and metadata
+  url      String? @db.VarChar(1000) // fal.ai / S3 / etc.
+  resultUrl String? @db.VarChar(1000) // Final result URL (alias for url)
+  role     String? @db.VarChar(50) // "hero" | "mascot" | "logo" | "background"
+  mimeType String? @db.VarChar(100) // "image/png"
+  prompt   String? @db.Text // AI generation prompt (duplicate of inputPrompt for compatibility)
+  metadata Json? // {width, height, model: "flux-dev"}
+
+  createdAt DateTime @default(now()) @db.Timestamp(6)
+  updatedAt DateTime @updatedAt @db.Timestamp(6)
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([status])
+  @@index([falRequestId])
+  @@map("Asset")
+}
+
+enum SandboxState {
+  RUNNING
+  PAUSED
+  KILLED
+  NONE
+}
+
+enum SessionStatus {
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum UserStatus {
+  ACTIVE
+  PAUSED
+  BLOCKED
+}
+
+enum MediaType {
+  MODEL_3D
+  IMAGE
+}
+
+enum PipelineType {
+  TEXT23D
+  IMAGE23D
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ChainType {
+  ETHEREUM
+  SOLANA
+}
+
+enum TransactionStatus {
+  CONFIRMED
+  FAILED
+  PENDING
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  CREATED
+  PAUSED
+  DONE
+}
+
+enum SubscriptionTier {
+  FREE
+  STARTER_REALM
+  INDIE_BUILDER
+  MASTER_CREATOR
+  DEV_STUDIO
+  PRODUCTION_STUDIO
+  WORLD_ARCHITECT
+}
+
+enum BillingPeriod {
+  MONTHLY
+  YEARLY
+}
+
+enum PaymentPlan {
+  FREE
+  PAY_AS_YOU_GO
+  TOP_UP
+  SUBSCRIPTION
+}
+
+enum BillingFrequency {
+  HOURLY_3
+  HOURLY_6
+  HOURLY_12
+  DAILY
+}
+
+enum PayAsYouGoStatus {
+  ACTIVE
+  PAUSED
+  DONE
+}
+
+enum FreePlanStatus {
+  ACTIVE
+  PAUSED
+  DONE
+}
+
+enum TopupStatus {
+  ACTIVE
+  PAUSED
+  DONE
+}
+
+enum AssetStatus {
+  AVAILABLE
+  NOT_AVAILABLE
+  EXPIRED
+}
+
+enum AssetType {
+  IMAGE
+}
+
+enum AssetSource {
+  AI_GENERATED
+  USER_UPLOADED
+}
+
+enum Enable3RedemptionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum DeploymentStatus {
+  PROCESSING
+  ACTIVE
+  FAILED
+  PAUSED
+  DELETED
+}
+
+// Enable3 Loyalty Redemption Tracking
+model Enable3Redemption {
+  id             String                  @id @default(cuid())
+  userId         String
+  transactionId  String                  @unique // Enable3 transaction ID (idempotency key)
+  tokenAmount    Float                   // LFR points redeemed
+  creditsAwarded Float                   // Credits given to user
+  tokenRate      Float                   // Exchange rate at time of redemption
+  usdcAmount     Float?                  // USDC equivalent (from Enable3)
+  optionId       String?                 // Reward option selected
+  productId      String?                 // Purchase product ID
+  status         Enable3RedemptionStatus @default(COMPLETED)
+  createdAt      DateTime                @default(now())
+  enable3Date    DateTime?               // Original date from Enable3
+  user           users                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([transactionId])
+  @@index([createdAt])
+}
+
+model Deployment {
+  id                  String           @id @default(cuid())
+  userId              String
+  projectId           String           @unique
+  backendAppName      String?
+  frontendAppName     String?
+  backendServiceName  String?
+  frontendServiceName String?
+  backendUrl          String           @default("")
+  frontendUrl         String           @default("")
+  githubRepoUrl       String           @default("")
+  visibility          String           @default("pr") @db.VarChar(10)
+  projectType         String           @default("LANDING_PAGE") @db.VarChar(50)
+  status              String           @default("PROCESSING") @db.VarChar(20)
+  screenshotUrl       String           @default("")
+  customDomain        String?
+  customDomainCname   String?
+  domainStatus        String?          @db.VarChar(20)
+  koyebDomainId       String?          // @deprecated - use saascdDomainUuid instead
+  frontendKoyebAppId  String?
+  saascdUpstreamUuid  String?          // SaaS Custom Domains upstream UUID
+  saascdDomainUuid    String?          // SaaS Custom Domains domain UUID
+  deployedAt          DateTime?
+  /// Timestamp of the most recent successful monthly credit charge for this deployment.
+  lastBilledAt        DateTime?
+  /// When the next monthly credit renewal is due. Checked daily by the billing cron.
+  /// Null on PROCESSING/FAILED deployments; set when status transitions to ACTIVE.
+  nextBillingAt       DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @default(now()) @updatedAt
+  user                users            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project             Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([status])
+  @@index([nextBillingAt])
+
+}
+
+// ============================================
+// MEME GPT AGENT MODELS
+// ============================================
+
+enum MemeSessionStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum MemeResearchStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model MemeResearchSession {
+  id          String            @id @default(cuid())
+  userId      String
+  coinName    String
+  coinSymbol  String?
+  status      MemeSessionStatus @default(ACTIVE)
+  createdAt   DateTime          @default(now())
+  lastActive  DateTime          @default(now())
+  completedAt DateTime?
+  metadata    Json?             // Additional session data
+  user        users             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reports     MemeReport[]
+  conversations MemeConversation[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([coinName])
+  @@index([lastActive])
+}
+
+model MemeReport {
+  id                       String              @id @default(cuid())
+  sessionId                String
+  coinName                 String
+  coinSymbol               String?
+  reportContent            Json                // Full research data
+  summary                  String?             @db.Text
+  researchDurationSeconds  Int?
+  dataSources              Json?               // Array of sources used
+  researchStatus           MemeResearchStatus  @default(COMPLETED)
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
+  session                  MemeResearchSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([coinName])
+  @@index([createdAt])
+}
+
+model MemeConversation {
+  id        String              @id @default(cuid())
+  sessionId String
+  role      String              // 'user' | 'assistant' | 'system' | 'tool'
+  content   String              @db.Text
+  metadata  Json?               // Tool calls, tokens, etc.
+  createdAt DateTime            @default(now())
+  session   MemeResearchSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([createdAt])
+
+}

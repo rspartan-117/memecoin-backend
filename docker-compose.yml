@@ -1,0 +1,55 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:16
+    container_name: meme_coin_db
+    restart: always
+    environment:
+      POSTGRES_USER: neondb_owner
+      POSTGRES_PASSWORD: npg_H4PTVEIJc0Ug
+      POSTGRES_DB: meme-coin-landing
+    ports:
+      - "5433:5432"
+    volumes:
+      - meme_coin_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neondb_owner"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: meme_coin_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - meme_coin_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # app:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   image: meme-coin-backend:latest
+  #   container_name: meme_coin_app
+  #   restart: always
+  #   ports:
+  #     - "4000:4000"
+  #   env_file:
+  #     - .env
+  #   depends_on:
+  #     db:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+
+volumes:
+  meme_coin_pg_data:
+  meme_coin_redis_data:

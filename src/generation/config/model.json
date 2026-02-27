@@ -1,0 +1,177 @@
+{
+    "text2image": {
+        "models": [
+            {
+                "modelName": "fal-ai/flux-2/dev",
+                "endpoint": "fal-ai/flux-2",
+                "inputs": [
+                    "prompt",
+                    "guidance_scale",
+                    "seed",
+                    "num_inference_steps",
+                    "image_size",
+                    "num_images",
+                    "acceleration",
+                    "enable_prompt_expansion",
+                    "sync_mode",
+                    "enable_safety_checker",
+                    "output_format"
+                ],
+                "required": ["prompt"],
+                "defaults": {
+                    "guidance_scale": 2.5,
+                    "seed": null,
+                    "num_inference_steps": 28,
+                    "image_size": "landscape_4_3",
+                    "num_images": 1,
+                    "acceleration": "regular",
+                    "enable_prompt_expansion": false,
+                    "sync_mode": false,
+                    "enable_safety_checker": true,
+                    "output_format": "webp"
+                }
+            },
+            {
+                "modelName": "fal-ai/nano-banana",
+                "endpoint": "fal-ai/nano-banana",
+                "inputs": [
+                    "prompt",
+                    "num_images",
+                    "seed",
+                    "aspect_ratio",
+                    "output_format",
+                    "safety_tolerance",
+                    "sync_mode",
+                    "limit_generations"
+                ],
+                "required": ["prompt"],
+                "defaults": {
+                    "num_images": 1,
+                    "seed": null,
+                    "aspect_ratio": "1:1",
+                    "output_format": "webp",
+                    "safety_tolerance": "4",
+                    "sync_mode": false,
+                    "limit_generations": false
+                }
+            },
+            {
+                "modelName": "fal-ai/nano-banana-pro",
+                "endpoint": "fal-ai/nano-banana-pro",
+                "inputs": [
+                    "prompt",
+                    "num_images",
+                    "seed",
+                    "aspect_ratio",
+                    "output_format",
+                    "safety_tolerance",
+                    "sync_mode",
+                    "resolution",
+                    "limit_generations",
+                    "enable_web_search"
+                ],
+                "required": ["prompt"],
+                "defaults": {
+                    "num_images": 1,
+                    "seed": null,
+                    "aspect_ratio": "1:1",
+                    "output_format": "webp",
+                    "safety_tolerance": "4",
+                    "sync_mode": false,
+                    "resolution": "2K",
+                    "limit_generations": false,
+                    "enable_web_search": false
+                }
+            }
+        ]
+    },
+    "image2image": {
+        "models": [
+            {
+                "modelName": "fal-ai/nano-banana/edit",
+                "endpoint": "fal-ai/nano-banana/edit",
+                "inputs": [
+                    "prompt",
+                    "image_urls",
+                    "num_images",
+                    "seed",
+                    "aspect_ratio",
+                    "output_format",
+                    "safety_tolerance",
+                    "sync_mode",
+                    "limit_generations"
+                ],
+                "required": ["prompt", "image_urls"],
+                "defaults": {
+                    "num_images": 1,
+                    "seed": null,
+                    "aspect_ratio": "auto",
+                    "output_format": "webp",
+                    "safety_tolerance": "4",
+                    "sync_mode": false,
+                    "limit_generations": false
+                }
+            },
+            {
+                "modelName": "fal-ai/flux-2/edit",
+                "endpoint": "fal-ai/flux-2/edit",
+                "inputs": [
+                    "prompt",
+                    "image_urls",
+                    "guidance_scale",
+                    "seed",
+                    "num_inference_steps",
+                    "image_size",
+                    "num_images",
+                    "acceleration",
+                    "enable_prompt_expansion",
+                    "sync_mode",
+                    "enable_safety_checker",
+                    "output_format"
+                ],
+                "required": ["prompt", "image_urls"],
+                "defaults": {
+                    "guidance_scale": 2.5,
+                    "seed": null,
+                    "num_inference_steps": 28,
+                    "image_size": null,
+                    "num_images": 1,
+                    "acceleration": "regular",
+                    "enable_prompt_expansion": false,
+                    "sync_mode": false,
+                    "enable_safety_checker": true,
+                    "output_format": "webp"
+                }
+            },
+            {
+                "modelName": "fal-ai/nano-banana-pro/edit",
+                "endpoint": "fal-ai/nano-banana-pro/edit",
+                "inputs": [
+                    "prompt",
+                    "image_urls",
+                    "num_images",
+                    "seed",
+                    "aspect_ratio",
+                    "output_format",
+                    "safety_tolerance",
+                    "sync_mode",
+                    "resolution",
+                    "limit_generations",
+                    "enable_web_search"
+                ],
+                "required": ["prompt", "image_urls"],
+                "defaults": {
+                    "num_images": 1,
+                    "seed": null,
+                    "aspect_ratio": "auto",
+                    "output_format": "webp",
+                    "safety_tolerance": "4",
+                    "sync_mode": false,
+                    "resolution": "2K",
+                    "limit_generations": false,
+                    "enable_web_search": false
+                }
+            }
+        ]
+    }
+}

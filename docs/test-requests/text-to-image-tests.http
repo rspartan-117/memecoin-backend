@@ -1,0 +1,221 @@
+### Text-to-Image API Tests
+### Base URL: http://localhost:4000/generation
+### Auth Token: test-token
+
+@baseUrl = http://localhost:4000/generation
+@authToken = test-token
+
+###############################################################################
+# Test 1: Meme Coin Logo with nano-banana (Fast, 1 credit)
+###############################################################################
+
+POST {{baseUrl}}/text-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana",
+  "params": {
+    "prompt": "Cartoon dog mascot wearing sunglasses, riding a rocket to the moon, gold coins background, vibrant colors, meme coin logo style, simple design",
+    "image_size": "square",
+    "num_inference_steps": 20,
+    "guidance_scale": 3.5
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 60000
+}
+
+###############################################################################
+# Test 2: High Quality Landscape with flux-2/dev (Premium, 2 credits)
+###############################################################################
+
+POST {{baseUrl}}/text-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/flux-2/dev",
+  "params": {
+    "prompt": "Epic mountain landscape at golden hour, dramatic clouds with orange and purple sunset, misty valleys, cinematic photography, 8K quality, professional landscape photography",
+    "image_size": "landscape_16_9",
+    "num_inference_steps": 30,
+    "guidance_scale": 4.0,
+    "output_format": "jpeg",
+    "enable_safety_checker": true
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 120000
+}
+
+###############################################################################
+# Test 3: Custom Portrait with nano-banana-pro (Fast Premium, 2 credits)
+###############################################################################
+
+POST {{baseUrl}}/text-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana-pro",
+  "params": {
+    "prompt": "Professional headshot of a young entrepreneur, clean studio background, natural lighting, confident smile, business casual attire, high quality portrait photography",
+    "image_size": "portrait_4_3",
+    "num_inference_steps": 25,
+    "guidance_scale": 3.8,
+    "seed": 42
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 90000
+}
+
+###############################################################################
+# Test 4: Artistic Style with recraft-v3 (Style-focused, 2 credits)
+###############################################################################
+
+POST {{baseUrl}}/text-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/recraft-v3",
+  "params": {
+    "prompt": "Abstract geometric crypto art, neon purple and cyan colors, futuristic digital illustration, blockchain network visualization, modern tech aesthetic",
+    "image_size": "square_hd",
+    "num_inference_steps": 28,
+    "guidance_scale": 5.0,
+    "style": "digital_illustration"
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 120000
+}
+
+###############################################################################
+# Test 5: Multiple Images Generation (1-4 variations)
+###############################################################################
+
+POST {{baseUrl}}/text-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana",
+  "params": {
+    "prompt": "Cute cat playing with yarn ball, cartoon style, playful expression, bright colors",
+    "image_size": "square",
+    "num_inference_steps": 20,
+    "num_images": 3,
+    "guidance_scale": 3.5
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 90000
+}
+
+###############################################################################
+# Test 6: Reproducible Generation with Seed
+###############################################################################
+
+POST {{baseUrl}}/text-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana",
+  "params": {
+    "prompt": "Magical forest with glowing mushrooms, fantasy art, ethereal lighting, mystical atmosphere",
+    "image_size": "landscape_4_3",
+    "num_inference_steps": 20,
+    "guidance_scale": 3.5,
+    "seed": 12345
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 60000
+}
+
+###
+# NOTE: Run this request twice with same seed to verify reproducibility
+
+###############################################################################
+# Test 7: Minimum Parameters (defaults applied)
+###############################################################################
+
+POST {{baseUrl}}/text-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana",
+  "params": {
+    "prompt": "Simple red apple on white background, product photography"
+  }
+}
+
+###############################################################################
+# Test 8: Maximum Quality Settings
+###############################################################################
+
+POST {{baseUrl}}/text-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/flux-2/dev",
+  "params": {
+    "prompt": "Ultra detailed macro photography of a butterfly on a flower, extreme close-up, vibrant colors, sharp focus, bokeh background, professional nature photography",
+    "image_size": "portrait_16_9",
+    "num_inference_steps": 50,
+    "guidance_scale": 7.0,
+    "output_format": "png",
+    "enable_safety_checker": true
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 180000
+}
+
+###############################################################################
+# Test 9: Error Test - Insufficient Credits
+###############################################################################
+# First drain your credits, then run this
+
+POST {{baseUrl}}/text-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/flux-2/dev",
+  "params": {
+    "prompt": "Test image"
+  }
+}
+
+###
+# Expected: 400 Bad Request with "Insufficient credits" message
+
+###############################################################################
+# Test 10: Error Test - Invalid Parameters
+###############################################################################
+
+POST {{baseUrl}}/text-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana",
+  "params": {
+    "prompt": "",
+    "image_size": "invalid_size",
+    "num_inference_steps": 100
+  }
+}
+
+###
+# Expected: 400 Bad Request with validation errors
+
+###############################################################################
+# Test 11: Check Credits Before Generation
+###############################################################################
+
+GET {{baseUrl}}/credits
+Authorization: Bearer {{authToken}}
+
+###
+# Use this to verify your credit balance before running expensive tests

@@ -1,0 +1,341 @@
+### Image-to-Image API Tests
+### Base URL: http://localhost:4000/generation
+### Auth Token: test-token
+### IMPORTANT: Replace example image URLs with real accessible URLs
+
+@baseUrl = http://localhost:4000/generation
+@authToken = test-token
+@sampleImage = https://example.com/sample-photo.jpg
+
+###############################################################################
+# Test 1: Watercolor Style Transfer (Fast, 1 credit)
+###############################################################################
+
+POST {{baseUrl}}/image-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana/edit",
+  "params": {
+    "prompt": "Watercolor painting style, soft pastel colors, artistic brush strokes",
+    "image_urls": ["{{sampleImage}}"],
+    "strength": 0.65,
+    "num_inference_steps": 20,
+    "guidance_scale": 3.5
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 60000
+}
+
+###############################################################################
+# Test 2: Premium Quality Enhancement (Fast Premium, 2 credits)
+###############################################################################
+
+POST {{baseUrl}}/image-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana-pro/edit",
+  "params": {
+    "prompt": "Professional photography, enhanced details, perfect lighting, premium quality, sharp focus, vivid colors",
+    "image_urls": ["{{sampleImage}}"],
+    "strength": 0.45,
+    "guidance_scale": 5.0,
+    "num_inference_steps": 30,
+    "output_format": "jpeg"
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 90000
+}
+
+###############################################################################
+# Test 3: Advanced Transformation with flux-2/edit (Premium, 2 credits)
+###############################################################################
+
+POST {{baseUrl}}/image-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/flux-2/edit",
+  "params": {
+    "prompt": "Cyberpunk neon aesthetic, purple and blue tones, futuristic city background at night, neon lights, rain reflections",
+    "image_urls": ["{{sampleImage}}"],
+    "strength": 0.8,
+    "aspect_ratio": "16:9",
+    "guidance_scale": 6.0,
+    "num_inference_steps": 35
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 120000
+}
+
+###############################################################################
+# Test 4: Subtle Color Correction (Low strength for subtle changes)
+###############################################################################
+
+POST {{baseUrl}}/image-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana/edit",
+  "params": {
+    "prompt": "Warm sunset lighting, golden hour glow, enhanced vibrance, natural color grading",
+    "image_urls": ["{{sampleImage}}"],
+    "strength": 0.3,
+    "num_inference_steps": 15,
+    "guidance_scale": 3.0
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 60000
+}
+
+###############################################################################
+# Test 5: Complete Style Transformation (High strength)
+###############################################################################
+
+POST {{baseUrl}}/image-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/flux-2/edit",
+  "params": {
+    "prompt": "Oil painting, impressionist style, bold brush strokes, vibrant colors, Van Gogh inspired",
+    "image_urls": ["{{sampleImage}}"],
+    "strength": 0.9,
+    "guidance_scale": 7.0,
+    "num_inference_steps": 40
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 120000
+}
+
+###############################################################################
+# Test 6: Aspect Ratio Change (Square to Portrait)
+###############################################################################
+
+POST {{baseUrl}}/image-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana-pro/edit",
+  "params": {
+    "prompt": "Cinematic portrait composition, dramatic lighting, professional photo",
+    "image_urls": ["{{sampleImage}}"],
+    "strength": 0.5,
+    "aspect_ratio": "9:16",
+    "num_inference_steps": 25,
+    "guidance_scale": 4.0
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 90000
+}
+
+###############################################################################
+# Test 7: Multiple Variations (Generate 1-4 variations)
+###############################################################################
+
+POST {{baseUrl}}/image-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana/edit",
+  "params": {
+    "prompt": "Artistic filter, vivid colors, creative enhancement",
+    "image_urls": ["{{sampleImage}}"],
+    "strength": 0.6,
+    "num_images": 3,
+    "num_inference_steps": 20
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 90000
+}
+
+###############################################################################
+# Test 8: Reproducible Edit with Seed
+###############################################################################
+
+POST {{baseUrl}}/image-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana/edit",
+  "params": {
+    "prompt": "Vintage film look, faded colors, nostalgic aesthetic, film grain",
+    "image_urls": ["{{sampleImage}}"],
+    "strength": 0.55,
+    "num_inference_steps": 20,
+    "seed": 98765
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 60000
+}
+
+###
+# NOTE: Run this request twice with same seed to verify reproducibility
+
+###############################################################################
+# Test 9: Minimum Parameters (defaults applied)
+###############################################################################
+
+POST {{baseUrl}}/image-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana/edit",
+  "params": {
+    "prompt": "Enhanced quality",
+    "image_urls": ["{{sampleImage}}"]
+  }
+}
+
+###############################################################################
+# Test 10: Maximum Quality Settings
+###############################################################################
+
+POST {{baseUrl}}/image-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/flux-2/edit",
+  "params": {
+    "prompt": "Ultra high quality, professional remaster, perfect details, 8K quality, museum-grade photography",
+    "image_urls": ["{{sampleImage}}"],
+    "strength": 0.7,
+    "guidance_scale": 8.0,
+    "num_inference_steps": 50,
+    "output_format": "png",
+    "enable_safety_checker": true
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 180000
+}
+
+###############################################################################
+# Test 11: Product Photo Enhancement (E-commerce use case)
+###############################################################################
+
+POST {{baseUrl}}/image-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana-pro/edit",
+  "params": {
+    "prompt": "Professional product photography, studio lighting, clean white background, sharp details, commercial quality",
+    "image_urls": ["{{sampleImage}}"],
+    "strength": 0.4,
+    "aspect_ratio": "1:1",
+    "num_inference_steps": 28,
+    "guidance_scale": 4.5
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 90000
+}
+
+###############################################################################
+# Test 12: Portrait Enhancement (Profile picture use case)
+###############################################################################
+
+POST {{baseUrl}}/image-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana-pro/edit",
+  "params": {
+    "prompt": "Professional headshot, perfect skin tone, natural beauty, soft studio lighting, professional retouching",
+    "image_urls": ["{{sampleImage}}"],
+    "strength": 0.35,
+    "aspect_ratio": "4:3",
+    "num_inference_steps": 30,
+    "guidance_scale": 4.0
+  },
+  "waitForCompletion": true,
+  "timeoutMs": 90000
+}
+
+###############################################################################
+# Test 13: Error Test - Missing Required Field (image_urls)
+###############################################################################
+
+POST {{baseUrl}}/image-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana/edit",
+  "params": {
+    "prompt": "Test transformation"
+  }
+}
+
+###
+# Expected: 400 Bad Request with "params.image_urls should not be empty"
+
+###############################################################################
+# Test 14: Error Test - Invalid Strength Value
+###############################################################################
+
+POST {{baseUrl}}/image-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana/edit",
+  "params": {
+    "prompt": "Test transformation",
+    "image_urls": ["{{sampleImage}}"],
+    "strength": 1.5
+  }
+}
+
+###
+# Expected: 400 Bad Request with "params.strength must not be greater than 1"
+
+###############################################################################
+# Test 15: Error Test - Empty image_urls Array
+###############################################################################
+
+POST {{baseUrl}}/image-to-image
+Authorization: Bearer {{authToken}}
+Content-Type: application/json
+
+{
+  "modelName": "fal-ai/nano-banana/edit",
+  "params": {
+    "prompt": "Test transformation",
+    "image_urls": []
+  }
+}
+
+###
+# Expected: 400 Bad Request validation error
+
+###############################################################################
+# Test 16: Check Credits Before Generation
+###############################################################################
+
+GET {{baseUrl}}/credits
+Authorization: Bearer {{authToken}}
+
+###
+# Use this to verify your credit balance before running expensive tests
+
+###############################################################################
+# NOTES:
+# - Replace {{sampleImage}} with real accessible image URLs
+# - Test with different image types: JPG, PNG, WEBP
+# - Try landscape, portrait, and square images
+# - Test with different image sizes (small to large)
+# - Verify strength parameter behavior (0.0 = no change, 1.0 = complete transformation)
+###############################################################################
