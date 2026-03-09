@@ -346,7 +346,7 @@ export class ProjectsController {
   @ApiOperation({
     summary: 'Delete project',
     description:
-      'Permanently delete a project and its associated sandbox. This action cannot be undone. All project data, assets, and conversation history will be removed.',
+      'Permanently delete a project and ALL associated resources: Koyeb deployment, SaaS Custom Domain, GitHub repository, E2B sandbox, S3 assets, and MongoDB conversation history. This action cannot be undone.',
   })
   @ApiParam({
     name: 'id',

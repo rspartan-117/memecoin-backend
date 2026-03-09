@@ -27,10 +27,6 @@ export class AuthModule implements NestModule {
         { path: '/api/*path', method: RequestMethod.GET },
         // Webhook routes
         {
-          path: '/payments/webhook/meme-coin/confirm-payin-created',
-          method: RequestMethod.POST,
-        },
-        {
           path: '/payments/webhook/meme-coin/confirm-payin-completed',
           method: RequestMethod.POST,
         },
@@ -89,6 +85,13 @@ export class AuthModule implements NestModule {
           path: '/brand/ai-query',
           method: RequestMethod.POST,
         },
+        // Community Showcase - public endpoint
+        {
+          path: 'community-showcase',
+          method: RequestMethod.GET,
+        },
+        // Exclude X402 endpoints - they use blockchain-based authentication
+        { path: '/x402/*path', method: RequestMethod.ALL },
       )
       .forRoutes('*');
   }

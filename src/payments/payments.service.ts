@@ -707,9 +707,9 @@ export class PaymentsService {
           ? this.calculateNextResetDateForCreation()
           : null;
 
-      // Calculate total credits based on subscription tier
+      // Calculate total credits based on subscription tier and billing period
       const baseTotalCredits =
-        this.calculateTotalCreditsForTier(subscriptionTier);
+        this.calculateTotalCreditsForTier(subscriptionTier, billingPeriod);
 
       // Add remaining credits from old subscription if upgrading
       const totalCredits = baseTotalCredits + remainingCredits;
@@ -865,7 +865,7 @@ export class PaymentsService {
         OrderAmount: createAtlosInvoiceDto.orderAmount,
         UserName: user.username ? user.username : `cus_${userId}`,
         UserEmail: user.email ? user.email : null,
-        PostbackUrl: `${this.configService.getOrThrow<string>('SELF_DOMAIN')}/payments/webhook/meta-create/confirm-payin-completed`,
+        PostbackUrl: `${this.configService.getOrThrow<string>('SELF_DOMAIN')}/payments/webhook/meme-coin/confirm-payin-completed`,
       };
 
       this.logger.log('Creating Atlos invoice for top-up', { userId, payload });

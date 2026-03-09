@@ -4,10 +4,12 @@ import { DeployController } from './controllers/deploy.controller';
 import { DeployService } from './services/deploy.service';
 import { DeployProcessor } from './processors/deploy.processor';
 import { SharedModule } from '../shared/shared.module';
+import { CommunityShowcaseModule } from '../community-showcase/community-showcase.module';
 
 @Module({
   imports: [
     SharedModule,
+    CommunityShowcaseModule,
 
     // Register queue with improved options
     BullModule.registerQueue({

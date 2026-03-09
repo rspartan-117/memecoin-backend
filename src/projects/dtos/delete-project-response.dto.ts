@@ -38,4 +38,12 @@ export class DeleteProjectResponseDto {
     example: 'completed',
   })
   assets_cleanup_status?: 'completed' | 'failed';
+
+  @ApiProperty({
+    description:
+      'Deployment resources cleanup status (Koyeb app + SaaS Custom Domain + GitHub repo)',
+    enum: ['completed', 'skipped', 'failed'],
+    example: 'completed',
+  })
+  deployment_cleanup_status?: 'completed' | 'skipped' | 'failed';
 }

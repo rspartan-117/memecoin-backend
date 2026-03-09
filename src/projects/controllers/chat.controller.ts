@@ -24,10 +24,10 @@ import {
 import { ChatService } from '../services/chat.service';
 import { ProjectsService } from '../services/projects.service';
 import {
-  GameGenCreditService,
+  CreditService,
   TOOL_CREDIT_COSTS,
   MINIMUM_CHAT_CREDITS,
-} from '../services/game-gen-credit.service';
+} from '../services/credit.service';
 import { ChatDto } from '../dtos';
 import { JwtAuthGuard } from '../../shared/guards/jwt-auth.guard';
 
@@ -41,7 +41,7 @@ export class ChatController {
   constructor(
     private readonly chatService: ChatService,
     private readonly projectsService: ProjectsService,
-    private readonly gameGenCreditService: GameGenCreditService,
+    private readonly creditService: CreditService,
   ) {}
 
   /**
@@ -95,7 +95,7 @@ export class ChatController {
       // Reject before starting the stream so the client gets a proper
       // HTTP 402 instead of an empty SSE stream.
       const remainingCredits =
-        await this.gameGenCreditService.getUserRemainingCredits(userId);
+        await this.creditService.getUserRemainingCredits(userId);
       if (remainingCredits < MINIMUM_CHAT_CREDITS) {
         throw new HttpException(
           {
@@ -182,8 +182,7 @@ export class ChatController {
 
                     if (eventData.usage_metadata) {
                       const modelName = eventData.model_name || 'unknown';
-                      const eventProjectId =
-                        eventData.project_id || projectId;
+                      const eventProjectId = eventData.project_id || projectId;
                       const inputTokens =
                         eventData.usage_metadata.input_tokens || 0;
                       const outputTokens =
@@ -197,7 +196,7 @@ export class ChatController {
                       );
 
                       // Process AI model charge asynchronously (don't block response)
-                      this.gameGenCreditService
+                      this.creditService
                         .processAIModelCharge({
                           userId,
                           projectId: eventProjectId,
@@ -232,7 +231,7 @@ export class ChatController {
                         `Billable tool completed: ${toolName} → ${creditsToDeduct} credits (project: ${projectId})`,
                       );
 
-                      this.gameGenCreditService
+                      this.creditService
                         .chargeForToolUsage({
                           userId,
                           projectId,
@@ -297,7 +296,7 @@ export class ChatController {
         });
       } catch (streamError) {
         this.logger.error(`Stream initiation error: ${streamError.message}`);
-        
+
         // Update project status to ENDED on stream initiation error
         try {
           await this.projectsService.updateProjectStatus(projectId, 'ENDED');
@@ -339,12 +338,14 @@ export class ChatController {
   @Get('history')
   @ApiOperation({
     summary: 'Get conversation history',
-    description: 'Get the conversation history for a project with sandbox data, status, deployment and GitHub information',
+    description:
+      'Get the conversation history for a project with sandbox data, status, deployment and GitHub information',
   })
   @ApiParam({ name: 'projectId', description: 'Project ID' })
   @ApiResponse({
     status: 200,
-    description: 'Conversation history retrieved with sandbox data, deployment information, and GitHub details (repo URL and username)',
+    description:
+      'Conversation history retrieved with sandbox data, deployment information, and GitHub details (repo URL and username)',
   })
   async getHistory(
     @Req() req: Request,
@@ -359,7 +360,11 @@ export class ChatController {
       const project = await this.projectsService.findOne(projectId, userId);
 
       // Get conversation history
-      const history = await this.chatService.getHistory(projectId, userId, limit);
+      const history = await this.chatService.getHistory(
+        projectId,
+        userId,
+        limit,
+      );
 
       // Extract metadata for URLs
       const metadata = (project.metadata as any) || {};
@@ -376,7 +381,8 @@ export class ChatController {
         },
         deployment: project.deployment || null,
         github_info: {
-          githubRepoUrl: project.githubRepoUrl || project.deployment?.githubRepoUrl || null,
+          githubRepoUrl:
+            project.githubRepoUrl || project.deployment?.githubRepoUrl || null,
           githubUsername: project.githubUsername || null,
         },
       };

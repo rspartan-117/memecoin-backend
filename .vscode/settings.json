@@ -8,5 +8,6 @@
         "**/node_modules/**": true,
         "**/.vscode/**": true
     },
-    "prisma.pinToPrisma6": true
+    "prisma.pinToPrisma6": true,
+    "snyk.advanced.autoSelectOrganization": true
 }

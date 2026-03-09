@@ -17,20 +17,20 @@ import { Enable3RedemptionStatus } from '@prisma/client';
 export class Enable3Service implements OnModuleInit {
   private readonly logger = new Logger(Enable3Service.name);
 
-  // Conversion rate: LFR points to credits
-  // Default: 10 LFR = 1 credit (0.1)
-  private readonly OBOE_TO_CREDITS_RATE: number;
+  // Conversion rate: FRG points to credits
+  // Default: 10 FRG = 1 credit (0.1)
+  private readonly FRG_TO_CREDITS_RATE: number;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
   ) {
-    this.OBOE_TO_CREDITS_RATE = this.configService.get<number>(
-      'ENABLE3_OBOE_TO_CREDITS_RATE',
+    this.FRG_TO_CREDITS_RATE = this.configService.get<number>(
+      'ENABLE3_FRG_TO_CREDITS_RATE',
       0.1,
     );
     this.logger.log(
-      `Enable3 Service initialized. OBOE to Credits rate: ${this.OBOE_TO_CREDITS_RATE}`,
+      `Enable3 Service initialized. FRG to Credits rate: ${this.FRG_TO_CREDITS_RATE}`,
     );
   }
 
@@ -93,7 +93,7 @@ export class Enable3Service implements OnModuleInit {
 
   /**
    * Process Enable3 withdrawal/redemption webhook
-   * Converts LFR points to credits and adds them to user's balance
+   * Converts FRG points to credits and adds them to user's balance
    */
   async processWithdrawal(dto: Enable3WithdrawalDto): Promise<{
     success: boolean;
@@ -102,7 +102,7 @@ export class Enable3Service implements OnModuleInit {
   }> {
     this.logger.log(`Processing Enable3 withdrawal for user: ${dto.userId}`);
     this.logger.debug(`Transaction ID: ${dto.transactionId}`);
-    this.logger.debug(`Token Amount: ${dto.tokenAmount} LFR`);
+    this.logger.debug(`Token Amount: ${dto.tokenAmount} FRG`);
 
     try {
       // 1. Idempotency check - prevent duplicate processing
@@ -143,10 +143,10 @@ export class Enable3Service implements OnModuleInit {
       }
 
       // 4. Calculate credits to award
-      const creditsToAward = dto.tokenAmount * this.OBOE_TO_CREDITS_RATE;
+      const creditsToAward = dto.tokenAmount * this.FRG_TO_CREDITS_RATE;
 
       this.logger.log(
-        `Awarding ${creditsToAward} credits to user ${dto.userId} (${dto.tokenAmount} OBOE * ${this.OBOE_TO_CREDITS_RATE})`,
+        `Awarding ${creditsToAward} credits to user ${dto.userId} (${dto.tokenAmount} FRG * ${this.FRG_TO_CREDITS_RATE})`,
       );
 
       // 5. Parse Enable3 date
@@ -210,7 +210,7 @@ export class Enable3Service implements OnModuleInit {
       return {
         success: true,
         creditsAwarded: creditsToAward,
-        message: `Successfully awarded ${creditsToAward} credits for ${dto.tokenAmount} LFR`,
+        message: `Successfully awarded ${creditsToAward} credits for ${dto.tokenAmount} FRG`,
       };
     } catch (error) {
       this.logger.error('Error processing Enable3 withdrawal:', error);

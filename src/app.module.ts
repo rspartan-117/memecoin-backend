@@ -22,6 +22,7 @@ import { Enable3Module } from './enable3/enable3.module';
 import { DeploymentModule } from './deployment/deployment.module';
 import { GithubModule } from './github/github.module';
 import { MemeGptModule } from './mastra/meme-gpt.module';
+import { CommunityShowcaseModule } from './community-showcase/community-showcase.module';
 
 @Module({
   imports: [
@@ -114,6 +115,7 @@ import { MemeGptModule } from './mastra/meme-gpt.module';
     DeploymentModule,
     GithubModule,
     MemeGptModule,
+    CommunityShowcaseModule,
   ],
   controllers: [AppController],
   providers: [

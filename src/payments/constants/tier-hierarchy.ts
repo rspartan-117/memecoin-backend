@@ -1,16 +1,16 @@
 /**
  * Subscription Tier Hierarchy
  * Defines the order of tiers for upgrade/downgrade validation
+ *
+ * 4 tiers: Starter ($19) · Creator ($29) · Pro ($49) · Studio ($99)
  */
 
 export enum TierLevel {
   FREE = 0,
-  STARTER_REALM = 1,
-  INDIE_BUILDER = 2,
-  MASTER_CREATOR = 3,
-  DEV_STUDIO = 4,
-  PRODUCTION_STUDIO = 5,
-  WORLD_ARCHITECT = 6,
+  STARTER = 1,
+  CREATOR = 2,
+  PRO = 3,
+  STUDIO = 4,
 }
 
 /**
@@ -24,10 +24,13 @@ export function getTierLevel(tier: string): number {
  * Check if an upgrade from sourceTier to targetTier is valid
  * (target must be higher than source)
  */
-export function isValidUpgrade(sourceTier: string, targetTier: string): boolean {
+export function isValidUpgrade(
+  sourceTier: string,
+  targetTier: string,
+): boolean {
   const sourceLevel = getTierLevel(sourceTier);
   const targetLevel = getTierLevel(targetTier);
-  
+
   return targetLevel > sourceLevel;
 }
 
@@ -35,10 +38,13 @@ export function isValidUpgrade(sourceTier: string, targetTier: string): boolean 
  * Check if a downgrade from sourceTier to targetTier is valid
  * (target must be lower than source)
  */
-export function isValidDowngrade(sourceTier: string, targetTier: string): boolean {
+export function isValidDowngrade(
+  sourceTier: string,
+  targetTier: string,
+): boolean {
   const sourceLevel = getTierLevel(sourceTier);
   const targetLevel = getTierLevel(targetTier);
-  
+
   return targetLevel < sourceLevel;
 }
 
@@ -46,7 +52,7 @@ export function isValidDowngrade(sourceTier: string, targetTier: string): boolea
  * Get the tier name from level
  */
 export function getTierNameFromLevel(level: number): string | null {
-  const entry = Object.entries(TierLevel).find(([_, value]) => value === level);
+  const entry = Object.entries(TierLevel).find(([, value]) => value === level);
   return entry ? entry[0] : null;
 }
 
@@ -56,13 +62,13 @@ export function getTierNameFromLevel(level: number): string | null {
 export function getValidUpgradeTiers(currentTier: string): string[] {
   const currentLevel = getTierLevel(currentTier);
   const upgradeTiers: string[] = [];
-  
+
   for (const [tier, level] of Object.entries(TierLevel)) {
     if (typeof level === 'number' && level > currentLevel) {
       upgradeTiers.push(tier);
     }
   }
-  
+
   return upgradeTiers;
 }
 
@@ -71,7 +77,7 @@ export function getValidUpgradeTiers(currentTier: string): string[] {
  */
 export function getTierHierarchy(): Array<{ tier: string; level: number }> {
   return Object.entries(TierLevel)
-    .filter(([_, value]) => typeof value === 'number')
+    .filter(([, value]) => typeof value === 'number')
     .map(([tier, level]) => ({ tier, level: level as number }))
     .sort((a, b) => a.level - b.level);
 }

@@ -52,15 +52,15 @@ export class DeployToKoyebDto {
     frontend?: Record<string, string>;
   };
 
-  @IsOptional()
   @IsString()
-  @ApiPropertyOptional({
+  @IsNotEmpty()
+  @ApiProperty({
     description:
-      'Custom domain to attach to the frontend (e.g., app.mydomain.com). User must add a CNAME record pointing their domain to in.saascustomdomains.com at their DNS provider after deployment.',
+      'Custom domain to attach to the frontend (e.g., app.mydomain.com). Required for all deployments. User must add a CNAME record pointing their domain to in.saascustomdomains.com at their DNS provider after deployment.',
     example: 'app.mydomain.com',
-    required: false,
+    required: true,
   })
-  customDomain?: string;
+  customDomain: string;
 }
 
 export class DeployToKoyebResponseDto {

@@ -121,19 +121,20 @@ export class DeployController {
 
   /**
    * DELETE /deployment/domain/:deploymentId
-   * Detaches the custom domain from a deployment and removes it from SaaS Custom Domains.
+   * Fully tears down a deployment: deletes the custom domain (SaaS Custom Domains),
+   * the Koyeb frontend app, the GitHub repository, and marks the deployment as DELETED.
    */
   @Delete('domain/:deploymentId')
   @HttpCode(HttpStatus.OK)
-  async removeCustomDomain(
+  async deleteDeployment(
     @Param('deploymentId') deploymentId: string,
     @Req() req: Request,
   ) {
     const userId = this.extractUserId(req);
     this.logger.log(
-      `Domain removal request for deployment ${deploymentId} by user ${userId}`,
+      `Delete deployment request for ${deploymentId} by user ${userId}`,
     );
-    return this.deployService.removeCustomDomain(deploymentId, userId);
+    return this.deployService.deleteDeployment(deploymentId, userId);
   }
 
   /**

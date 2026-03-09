@@ -6,7 +6,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../shared/services/prisma.service';
-import { ParallelAIService } from './services/parallel-ai.service';
+import { SentimentAnalysisService } from './services/sentiment-analysis.service';
 import {
   OpenRouterService,
   OpenRouterMessage,
@@ -16,16 +16,18 @@ import {
   createResearchMemeCoinTool,
   createGetStoredReportTool,
   createRefreshCoinDataTool,
+  createWebSearchTool,
 } from './tools';
 import { SYSTEM_PROMPT } from './agents/meme-gpt.agent';
 import {
-  GameGenCreditService,
+  CreditService,
   InsufficientCreditsError,
   MEMEGPT_MIN_CREDITS,
   MEMEGPT_RESEARCH_CREDIT_COST,
   MEMEGPT_REFRESH_CREDIT_COST,
   MEMEGPT_STORED_REPORT_CREDIT_COST,
-} from '../projects/services/game-gen-credit.service';
+  MEMEGPT_WEB_SEARCH_CREDIT_COST,
+} from '../projects/services/credit.service';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -69,17 +71,18 @@ export class MemeGptService {
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
-    private readonly parallelAI: ParallelAIService,
+    private readonly sentimentAnalysis: SentimentAnalysisService,
     private readonly openRouter: OpenRouterService,
-    private readonly creditService: GameGenCreditService,
+    private readonly creditService: CreditService,
   ) {
     this.memoryStore = new MemeGPTMemoryStore(prisma);
 
     // Initialize tools with service dependencies
     this.tools = [
-      createResearchMemeCoinTool(parallelAI, prisma),
+      createResearchMemeCoinTool(sentimentAnalysis, prisma),
       createGetStoredReportTool(prisma),
-      createRefreshCoinDataTool(parallelAI),
+      createRefreshCoinDataTool(sentimentAnalysis),
+      createWebSearchTool(config.get<string>('PARALLEL_AI_API_KEY') || ''),
     ];
   }
 
@@ -355,7 +358,7 @@ export class MemeGptService {
           let toolResult: string;
           try {
             const toolArgs = JSON.parse(tc.function.arguments || '{}');
-            const matchedTool = this.tools.find(
+            const matchedTool = enabledTools.find(
               (t) => t.id === tc.function.name,
             );
 
@@ -377,11 +380,14 @@ export class MemeGptService {
               }
 
               // Inject coin_name from the session when the LLM omits it.
-              // research_meme_coin and refresh_coin_data both require coin_name.
+              // Only for tools that actually use coin_name as a parameter.
               if (
                 !toolArgs.coin_name &&
                 session?.coinName &&
-                session.coinName !== 'General'
+                session.coinName !== 'General' &&
+                (tc.function.name === 'research_meme_coin' ||
+                  tc.function.name === 'refresh_coin_data' ||
+                  tc.function.name === 'get_stored_report')
               ) {
                 toolArgs.coin_name = session.coinName;
               }
@@ -409,6 +415,7 @@ export class MemeGptService {
                 research_meme_coin: MEMEGPT_RESEARCH_CREDIT_COST,
                 refresh_coin_data: MEMEGPT_REFRESH_CREDIT_COST,
                 get_stored_report: MEMEGPT_STORED_REPORT_CREDIT_COST,
+                search_web: MEMEGPT_WEB_SEARCH_CREDIT_COST,
               };
               const creditCost = MEMEGPT_TOOL_COSTS[tc.function.name] ?? 0;
               if (creditCost > 0 && toolSucceeded) {
@@ -417,6 +424,7 @@ export class MemeGptService {
                   projectId: sessionId,
                   toolName: tc.function.name,
                   creditsToDeduct: creditCost,
+                  toolType: 'meme-gpt',
                 });
                 this.logger.log(
                   `Charged ${creditCost} credits for ${tc.function.name} — user: ${session.userId}`,
@@ -510,6 +518,7 @@ export class MemeGptService {
                 projectId: sessionId,
                 toolName: 'research_meme_coin',
                 creditsToDeduct: MEMEGPT_RESEARCH_CREDIT_COST,
+                toolType: 'meme-gpt',
               });
               this.logger.log(
                 `Charged ${MEMEGPT_RESEARCH_CREDIT_COST} credits for auto-fallback research_meme_coin — user: ${session.userId}`,
@@ -649,11 +658,11 @@ export class MemeGptService {
       lastEventAt: string;
     } | null;
   }> {
-    // Validate session exists
+    // Validate session exists and belongs to the requesting user
     const session = await this.prisma.memeResearchSession.findUnique({
       where: { id: sessionId },
     });
-    if (!session) {
+    if (!session || (requestingUserId && session.userId !== requestingUserId)) {
       throw new NotFoundException(`Session not found: ${sessionId}`);
     }
 
@@ -681,6 +690,51 @@ export class MemeGptService {
           }
         : null,
     };
+  }
+
+  /**
+   * Delete a session and all its related data (conversations, reports).
+   * Prisma cascades handle child-record removal.
+   * Rejects if the session is currently streaming.
+   */
+  async deleteSession(
+    sessionId: string,
+    requestingUserId: string,
+  ): Promise<{ deleted: true; sessionId: string }> {
+    // Verify session exists and belongs to the requesting user
+    const session = await this.prisma.memeResearchSession.findUnique({
+      where: { id: sessionId },
+    });
+
+    if (!session) {
+      throw new NotFoundException(`Session not found: ${sessionId}`);
+    }
+
+    if (session.userId !== requestingUserId) {
+      throw new NotFoundException(`Session not found: ${sessionId}`);
+    }
+
+    // Prevent deletion while a stream is in progress
+    const streamState = this.streamingStates.get(sessionId);
+    if (streamState?.status === 'streaming') {
+      throw new Error(
+        'Cannot delete a session while it is actively streaming. Wait for the stream to finish.',
+      );
+    }
+
+    // Clean up in-memory streaming state if present
+    this.streamingStates.delete(sessionId);
+
+    // Delete the session — cascades remove conversations & reports
+    await this.prisma.memeResearchSession.delete({
+      where: { id: sessionId },
+    });
+
+    this.logger.log(
+      `Deleted session ${sessionId} for user ${requestingUserId}`,
+    );
+
+    return { deleted: true, sessionId };
   }
 
   /**

@@ -1,5 +1,4 @@
-
-​import {
+import {
   Injectable,
   BadRequestException,
   InternalServerErrorException,
@@ -20,12 +19,13 @@ import { Response, Request } from 'express';
 import { S3UrlService } from '../../shared/services/s3-url.service';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue, Job } from 'bull';
+import { CommunityShowcaseService } from '../../community-showcase/services/community-showcase.service';
 import {
-  GameGenCreditService,
+  CreditService,
   DEPLOYMENT_CREDIT_COST,
   CUSTOM_DOMAIN_CREDIT_SURCHARGE,
   InsufficientCreditsError,
-} from '../../projects/services/game-gen-credit.service';
+} from '../../projects/services/credit.service';
 
 @Injectable()
 export class DeployService {
@@ -40,14 +40,14 @@ export class DeployService {
   private readonly pagespeedApiUrl =
     'https://www.googleapis.com/pagespeedonline/v5/runPagespeed';
 
-  // Credit cost charged once per deployment trigger (1,100 credits = $5.50)
+  // Base credit cost per deployment trigger (1,100 credits = $5.50)
   // Covers 1 month of: Koyeb nano ($2.68) + DO Spaces (~$0.01) at 2× margin.
   // No refund on failure — platform resources are consumed regardless.
   private static readonly DEPLOYMENT_CREDIT_COST = DEPLOYMENT_CREDIT_COST;
 
-  // Extra surcharge when a custom domain is attached (100 credits = $0.50)
+  // Custom domain surcharge included in every deployment (100 credits = $0.50)
   // Covers SaaS Custom Domains $0.20/domain/month at 2× margin.
-  // Total with custom domain: 1,100 + 100 = 1,200 credits ($6.00).
+  // Total per deployment: 1,100 + 100 = 1,200 credits ($6.00).
   private static readonly CUSTOM_DOMAIN_CREDIT_SURCHARGE =
     CUSTOM_DOMAIN_CREDIT_SURCHARGE;
 
@@ -61,7 +61,8 @@ export class DeployService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly s3Service: S3UrlService,
-    private readonly creditService: GameGenCreditService,
+    private readonly creditService: CreditService,
+    private readonly showcaseService: CommunityShowcaseService,
     @InjectQueue('deploy-queue') private readonly deployQueue: Queue,
   ) {
     const koyebToken =
@@ -100,7 +101,7 @@ export class DeployService {
       );
     }
 
-    // SaaS Custom Domains (optional — only required when using custom domains)
+    // SaaS Custom Domains (required — every deployment requires a custom domain)
     this.saascdApiToken =
       process.env.SAAS_CD_API_TOKEN ||
       configService.get<string>('SAAS_CD_API_TOKEN') ||
@@ -110,18 +111,18 @@ export class DeployService {
       configService.get<string>('SAAS_CD_ACCOUNT_UUID') ||
       null;
 
-    // Warn if SaaS CD credentials are partially configured (one without the other)
+    // SaaS CD credentials are required — custom domain is mandatory for all deployments
     if (this.saascdApiToken && !this.saascdAccountUuid) {
-      this.logger.warn(
-        'SAAS_CD_API_TOKEN is set but SAAS_CD_ACCOUNT_UUID is missing — custom domain features will be unavailable',
+      this.logger.error(
+        'SAAS_CD_API_TOKEN is set but SAAS_CD_ACCOUNT_UUID is missing — deployments will fail',
       );
     } else if (!this.saascdApiToken && this.saascdAccountUuid) {
-      this.logger.warn(
-        'SAAS_CD_ACCOUNT_UUID is set but SAAS_CD_API_TOKEN is missing — custom domain features will be unavailable',
+      this.logger.error(
+        'SAAS_CD_ACCOUNT_UUID is set but SAAS_CD_API_TOKEN is missing — deployments will fail',
       );
     } else if (!this.saascdApiToken && !this.saascdAccountUuid) {
-      this.logger.warn(
-        'SAAS_CD_API_TOKEN and SAAS_CD_ACCOUNT_UUID are not set — custom domain features will be unavailable',
+      this.logger.error(
+        'SAAS_CD_API_TOKEN and SAAS_CD_ACCOUNT_UUID are not set — deployments will fail',
       );
     }
 
@@ -359,6 +360,16 @@ export class DeployService {
         `[Terminate] Failed to mark deployment DELETED: ${err.message}`,
       );
     }
+
+    // 4. Invalidate community showcase cache (deployment may have been public)
+    try {
+      await this.showcaseService.invalidateCache();
+      this.logger.log('[Terminate] Community showcase cache invalidated');
+    } catch (err) {
+      this.logger.warn(
+        `[Terminate] Failed to invalidate showcase cache: ${err.message}`,
+      );
+    }
   }
 
   /**
@@ -413,7 +424,7 @@ export class DeployService {
             : 0);
 
         try {
-          // chargeForDeployment throws BadRequestException on insufficient credits
+          // chargeForDeployment throws InsufficientCreditsError when user has no credits left
           await this.creditService.chargeForDeployment({
             userId: deployment.userId,
             projectId: deployment.projectId,
@@ -485,13 +496,13 @@ export class DeployService {
     }
 
     // ===== CREDIT GATE =====
-    // Base: 1,100 credits (Koyeb nano + storage at 2× margin)
-    // Custom domain surcharge: +100 credits (SaaS Custom Domains $0.20/mo at 2× margin)
+    // 1,200 credits per deployment: 1,100 (Koyeb nano + storage) + 100 (custom domain)
+    // Custom domain is mandatory for all deployments.
     const creditsToDeduct =
       DeployService.DEPLOYMENT_CREDIT_COST +
-      (dto.customDomain ? DeployService.CUSTOM_DOMAIN_CREDIT_SURCHARGE : 0);
+      DeployService.CUSTOM_DOMAIN_CREDIT_SURCHARGE;
     this.logger.log(
-      `Deployment credits to charge: ${creditsToDeduct}${dto.customDomain ? ' (includes custom domain surcharge)' : ''}`,
+      `Deployment credits to charge: ${creditsToDeduct} (includes custom domain)`,
     );
     const { creditsDeducted, creditsRemaining } =
       await this.creditService.chargeForDeployment({
@@ -504,37 +515,41 @@ export class DeployService {
     );
     // =======================
 
-    await this.deletePreviousDeployment(projectId);
-
-    const projectTypeCode = 'lp'; // Always landing page
-    const visibility = isPublic ? 'pb' : 'pr';
-
-    const sanitizedAppName = this.sanitizeName(appName);
-    const timestamp = Date.now();
-
-    const frontendAppName = `${sanitizedAppName}-fr-${projectTypeCode}-${visibility}-${timestamp}`;
-    const frontendServiceName = sanitizedAppName;
-
-    const deployment = await this.prisma.deployment.create({
-      data: {
-        userId,
-        projectId,
-        frontendAppName,
-        frontendServiceName,
-        frontendUrl: '',
-        githubRepoUrl: '',
-        visibility,
-        projectType: project.type,
-        status: 'PROCESSING',
-        screenshotUrl: '',
-        customDomain: dto.customDomain || null,
-        domainStatus: dto.customDomain ? 'PENDING' : null,
-      },
-    });
-
-    this.logger.log(`Deployment record created with ID: ${deployment.id}`);
-
+    // All post-charge steps are wrapped in one try so that any failure
+    // (DB constraint on deployment.create, Redis down for deployQueue.add, etc.)
+    // triggers a full credit refund — at this point no cloud resources exist yet.
+    let deployment: { id: string } | null = null;
     try {
+      await this.deletePreviousDeployment(projectId);
+
+      const projectTypeCode = 'lp'; // Always landing page
+      const visibility = isPublic ? 'pb' : 'pr';
+
+      const sanitizedAppName = this.sanitizeName(appName);
+      const timestamp = Date.now();
+
+      const frontendAppName = `${sanitizedAppName}-fr-${projectTypeCode}-${visibility}-${timestamp}`;
+      const frontendServiceName = sanitizedAppName;
+
+      deployment = await this.prisma.deployment.create({
+        data: {
+          userId,
+          projectId,
+          frontendAppName,
+          frontendServiceName,
+          frontendUrl: '',
+          githubRepoUrl: '',
+          visibility,
+          projectType: project.type,
+          status: 'PROCESSING',
+          screenshotUrl: '',
+          customDomain: dto.customDomain,
+          domainStatus: 'PENDING',
+        },
+      });
+
+      this.logger.log(`Deployment record created with ID: ${deployment.id}`);
+
       this.logger.log('Checking queue connection...');
       const queueHealth = await this.deployQueue.isReady();
       this.logger.log(`Queue ready status: ${queueHealth}`);
@@ -579,14 +594,31 @@ export class DeployService {
         creditsRemaining,
       };
     } catch (error) {
-      this.logger.error(`❌ Failed to add job to queue: ${error.message}`);
+      this.logger.error(`❌ Failed to enqueue deployment: ${error.message}`);
       this.logger.error(`Error stack: ${error.stack}`);
       this.logger.error(`Error details: ${JSON.stringify(error)}`);
 
-      await this.prisma.deployment.update({
-        where: { id: deployment.id },
-        data: { status: 'FAILED' },
-      });
+      if (deployment) {
+        await this.prisma.deployment
+          .update({ where: { id: deployment.id }, data: { status: 'FAILED' } })
+          .catch((e) =>
+            this.logger.warn(`Could not mark deployment FAILED: ${e.message}`),
+          );
+      }
+
+      // Refund credits — queue enqueue failed before any cloud resources were allocated
+      await this.creditService
+        .refundDeploymentCredits({
+          userId,
+          projectId,
+          creditsToRefund: creditsDeducted,
+        })
+        .catch((refundErr) => {
+          this.logger.error(
+            `CRITICAL: Failed to refund ${creditsDeducted} credits for user ${userId} ` +
+              `after pre-queue failure (project: ${projectId}): ${refundErr.message}`,
+          );
+        });
 
       throw new InternalServerErrorException(
         `Failed to start deployment: ${error.message}`,
@@ -626,6 +658,13 @@ export class DeployService {
       }
     };
 
+    // Hoisted so the outer catch can read them for the refund / cleanup path
+    let creditsDeducted = 0;
+    let creditsRemaining = 0;
+    // Tracks whether deployment.create() succeeded so the catch can mark it FAILED
+    // if deployQueue.add() subsequently throws (deployment is const inside the try).
+    let createdDeploymentId: string | null = null;
+
     try {
       // Initial event
       writeSSE({ type: 'init', message: 'Deployment initiated' });
@@ -642,13 +681,11 @@ export class DeployService {
       }
 
       // ===== CREDIT GATE =====
-      // Base: 1,100 credits (Koyeb nano + storage at 2× margin)
-      // Custom domain surcharge: +100 credits (SaaS Custom Domains $0.20/mo at 2× margin)
+      // 1,200 credits per deployment: 1,100 (Koyeb nano + storage) + 100 (custom domain)
+      // Custom domain is mandatory for all deployments.
       const creditsToDeduct =
         DeployService.DEPLOYMENT_CREDIT_COST +
-        (dto.customDomain ? DeployService.CUSTOM_DOMAIN_CREDIT_SURCHARGE : 0);
-      let creditsDeducted = 0;
-      let creditsRemaining = 0;
+        DeployService.CUSTOM_DOMAIN_CREDIT_SURCHARGE;
       try {
         const chargeResult = await this.creditService.chargeForDeployment({
           userId,
@@ -706,10 +743,12 @@ export class DeployService {
           projectType: project.type,
           status: 'PROCESSING',
           screenshotUrl: '',
-          customDomain: dto.customDomain || null,
-          domainStatus: dto.customDomain ? 'PENDING' : null,
+          customDomain: dto.customDomain,
+          domainStatus: 'PENDING',
         },
       });
+      // Make the id visible to the outer catch in case deployQueue.add() throws next
+      createdDeploymentId = deployment.id;
 
       writeSSE({
         type: 'queued',
@@ -839,6 +878,41 @@ export class DeployService {
       res.on('close', cleanup);
     } catch (error) {
       this.logger.error(`Streaming deployment error: ${error.message}`);
+
+      // Mark the deployment record FAILED if it was created before the throw
+      if (createdDeploymentId) {
+        await this.prisma.deployment
+          .update({
+            where: { id: createdDeploymentId },
+            data: { status: 'FAILED' },
+          })
+          .catch((e) =>
+            this.logger.warn(
+              `Could not mark stream deployment FAILED: ${e.message}`,
+            ),
+          );
+      }
+
+      // Refund credits if they were successfully charged before the failure.
+      // creditsDeducted is 0 until chargeForDeployment succeeds, so this guard
+      // ensures we only refund when the charge actually went through and then
+      // deployment.create() or deployQueue.add() subsequently failed.
+      // At this point no cloud resources (GitHub, Koyeb, SaaS CD) exist yet.
+      if (creditsDeducted > 0) {
+        await this.creditService
+          .refundDeploymentCredits({
+            userId,
+            projectId,
+            creditsToRefund: creditsDeducted,
+          })
+          .catch((refundErr) => {
+            this.logger.error(
+              `CRITICAL: Failed to refund ${creditsDeducted} credits for user ${userId} ` +
+                `after pre-queue failure (project: ${projectId}): ${refundErr.message}`,
+            );
+          });
+      }
+
       writeSSE({
         type: 'error',
         message: error.message || 'Deployment failed to start',
@@ -975,10 +1049,14 @@ export class DeployService {
       if (!isStaticLandingPage) {
         this.ensurePackageJson(frontendDir);
 
-        if (!fs.existsSync(path.join(frontendDir, 'package-lock.json')) &&
-            !fs.existsSync(path.join(frontendDir, 'yarn.lock')) &&
-            !fs.existsSync(path.join(frontendDir, 'pnpm-lock.yaml'))) {
-          this.logger.log('No lockfile found in frontend dir — generating package-lock.json');
+        if (
+          !fs.existsSync(path.join(frontendDir, 'package-lock.json')) &&
+          !fs.existsSync(path.join(frontendDir, 'yarn.lock')) &&
+          !fs.existsSync(path.join(frontendDir, 'pnpm-lock.yaml'))
+        ) {
+          this.logger.log(
+            'No lockfile found in frontend dir — generating package-lock.json',
+          );
           try {
             execSync('npm install --package-lock-only --ignore-scripts', {
               cwd: frontendDir,
@@ -1111,26 +1189,24 @@ export class DeployService {
       this.logger.log(`Frontend deployed at: ${frontendPublicUrl}`);
       if (job) await job.progress(70);
 
-      // Attach custom domain via SaaS Custom Domains if requested
-      if (dto.customDomain) {
-        this.logger.log(
-          `Attaching custom domain "${dto.customDomain}" via SaaS Custom Domains`,
+      // Attach custom domain via SaaS Custom Domains (required for all deployments)
+      this.logger.log(
+        `Attaching custom domain "${dto.customDomain}" via SaaS Custom Domains`,
+      );
+      try {
+        await this.attachCustomDomain(
+          frontendPublicUrl,
+          dto.customDomain,
+          deploymentId,
         );
-        try {
-          await this.attachCustomDomain(
-            frontendPublicUrl,
-            dto.customDomain,
-            deploymentId,
-          );
-          this.logger.log(
-            `Custom domain "${dto.customDomain}" attached successfully`,
-          );
-        } catch (domainError) {
-          this.logger.error(
-            `Failed to attach custom domain: ${domainError.message}`,
-          );
-          // Don't fail the entire deployment - domain can be retried later
-        }
+        this.logger.log(
+          `Custom domain "${dto.customDomain}" attached successfully`,
+        );
+      } catch (domainError) {
+        this.logger.error(
+          `Failed to attach custom domain: ${domainError.message}`,
+        );
+        // Don't fail the entire deployment - domain can be retried later
       }
 
       this.logger.log(
@@ -1158,6 +1234,20 @@ export class DeployService {
         },
       });
       if (job) await job.progress(100);
+
+      // Invalidate community showcase cache if this is a public deployment
+      if (isPublic) {
+        this.logger.log(
+          'Public deployment completed — invalidating community showcase cache',
+        );
+        try {
+          await this.showcaseService.invalidateCache();
+        } catch (cacheErr) {
+          this.logger.warn(
+            `Failed to invalidate showcase cache: ${cacheErr.message}`,
+          );
+        }
+      }
 
       try {
         if (fs.existsSync(zipFilePath)) fs.unlinkSync(zipFilePath);
@@ -1589,10 +1679,7 @@ export class DeployService {
 
     // If the app name already exists (e.g. from a previous failed attempt),
     // delete it and recreate so we get a clean deployment.
-    if (
-      appRes.status === 400 &&
-      appData?.message?.includes('already exists')
-    ) {
+    if (appRes.status === 400 && appData?.message?.includes('already exists')) {
       this.logger.warn(
         `Koyeb app "${appName}" already exists — deleting and recreating...`,
       );
@@ -1633,7 +1720,9 @@ export class DeployService {
           await new Promise((resolve) => setTimeout(resolve, 3000));
         }
       } catch (deleteErr) {
-        this.logger.warn(`Error deleting existing Koyeb app: ${deleteErr.message}`);
+        this.logger.warn(
+          `Error deleting existing Koyeb app: ${deleteErr.message}`,
+        );
       }
 
       // Retry app creation
@@ -2257,11 +2346,16 @@ export class DeployService {
   }
 
   /**
-   * Removes a custom domain from a deployment.
-   * Deletes the upstream on SaaS Custom Domains (which cascades to all its domains)
-   * and clears the domain fields in the database.
+   * Fully tears down a deployment:
+   *   1. Deletes the SaaS Custom Domains upstream (cascades to all domains on it)
+   *   2. Deletes the Koyeb frontend application (stops hosting)
+   *   3. Deletes the GitHub repository (cleanup)
+   *   4. Marks the deployment as DELETED in the database (preserved for user history)
+   *
+   * Custom domain is mandatory for every deployment, so deleting the domain
+   * is equivalent to deleting the entire deployment.
    */
-  async removeCustomDomain(
+  async deleteDeployment(
     deploymentId: string,
     requestingUserId: string,
   ): Promise<{ message: string }> {
@@ -2281,32 +2375,74 @@ export class DeployService {
       );
     }
 
-    if (!deployment.saascdUpstreamUuid) {
-      throw new BadRequestException(
-        'No custom domain is configured for this deployment',
-      );
-    }
-
-    // Delete the upstream on SaaS CD — this also removes all associated custom domains
-    const deleteRes = await this.saascdFetch(
-      `/upstreams/${deployment.saascdUpstreamUuid}`,
-      'DELETE',
+    this.logger.log(
+      `Deleting deployment ${deploymentId} — tearing down all resources`,
     );
 
-    if (!deleteRes.ok && deleteRes.status !== 404) {
-      const errBody = await deleteRes.text().catch(() => '');
-      this.logger.error(
-        `SaaS CD upstream delete failed: ${deleteRes.status} ${errBody}`,
-      );
-      throw new InternalServerErrorException(
-        `Failed to remove custom domain from SaaS Custom Domains: ${deleteRes.status}`,
-      );
+    // 1. Delete SaaS Custom Domains upstream (cascades to all custom domains on it)
+    if (deployment.saascdUpstreamUuid) {
+      try {
+        const deleteRes = await this.saascdFetch(
+          `/upstreams/${deployment.saascdUpstreamUuid}`,
+          'DELETE',
+        );
+        if (deleteRes.ok || deleteRes.status === 404) {
+          this.logger.log(
+            `SaaS CD upstream ${deployment.saascdUpstreamUuid} deleted`,
+          );
+        } else {
+          const errBody = await deleteRes.text().catch(() => '');
+          this.logger.warn(
+            `SaaS CD upstream delete failed: ${deleteRes.status} ${errBody}`,
+          );
+        }
+      } catch (err) {
+        this.logger.warn(`SaaS CD upstream delete error: ${err.message}`);
+      }
     }
 
-    // Clear all domain fields in the database
+    // 2. Delete the Koyeb frontend application (stops the running service)
+    if (deployment.frontendAppName) {
+      try {
+        execSync(
+          `koyeb apps delete ${deployment.frontendAppName} --token ${this.koyebApiToken}`,
+          { encoding: 'utf-8' },
+        );
+        this.logger.log(`Koyeb app ${deployment.frontendAppName} deleted`);
+      } catch (err) {
+        this.logger.warn(
+          `Failed to delete Koyeb app ${deployment.frontendAppName}: ${err.message}`,
+        );
+      }
+    }
+
+    // 3. Delete the GitHub repository (cleanup source code)
+    if (deployment.githubRepoUrl) {
+      try {
+        const octokit = new Octokit({ auth: this.githubToken });
+        // Extract owner/repo from URL like "https://github.com/owner/repo"
+        const urlParts = deployment.githubRepoUrl
+          .replace(/\.git$/, '')
+          .split('/');
+        const repo = urlParts.pop();
+        const owner = urlParts.pop();
+        if (owner && repo) {
+          await octokit.request('DELETE /repos/{owner}/{repo}', {
+            owner,
+            repo,
+          });
+          this.logger.log(`GitHub repo ${owner}/${repo} deleted`);
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to delete GitHub repo: ${err.message}`);
+      }
+    }
+
+    // 4. Mark deployment as DELETED in the database (preserves record for user history)
     await this.prisma.deployment.update({
       where: { id: deploymentId },
       data: {
+        status: 'DELETED',
         customDomain: null,
         customDomainCname: null,
         domainStatus: null,
@@ -2315,9 +2451,23 @@ export class DeployService {
       },
     });
 
-    this.logger.log(`Custom domain removed from deployment ${deploymentId}`);
+    // 5. Invalidate community showcase cache (deployment may have been public)
+    if (deployment.visibility === 'pb') {
+      try {
+        await this.showcaseService.invalidateCache();
+        this.logger.log(
+          'Community showcase cache invalidated after deployment deletion',
+        );
+      } catch (err) {
+        this.logger.warn(`Failed to invalidate showcase cache: ${err.message}`);
+      }
+    }
 
-    return { message: 'Custom domain removed successfully' };
+    this.logger.log(
+      `Deployment ${deploymentId} fully deleted (SaaS CD + Koyeb + GitHub + DB marked DELETED)`,
+    );
+
+    return { message: 'Deployment deleted successfully' };
   }
 
   async verifyCustomDomain(

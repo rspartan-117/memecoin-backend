@@ -36,6 +36,8 @@ model users {
   RefreshToken           RefreshToken?
   SpaceAsset             SpaceAsset[]
   Subscription           Subscription[]
+  preferredNetwork       String?
+  lastPaymentNetwork     String?
   TopUp                  TopUp?
   Transaction            Transaction[]
   Upload                 Upload[]
@@ -97,6 +99,10 @@ model Transaction {
   status                  TransactionStatus
   invoiceId               String?
   paymentPlan             PaymentPlan
+  paymentMethod           String?           // X402, ATLOS, etc.
+  transactionHash         String?
+  isTestnet               Boolean?          @default(false)
+  blockchainNetwork       String?           // Network name (base, ethereum, solana, etc.)
   tokenDecimals           Int
   description             String?
   invoiceRefId            String?
@@ -153,6 +159,8 @@ model Subscription {
   nextBillingDate        DateTime?
   subscriptionCancelDate DateTime?
   subscriptionStatus     SubscriptionStatus?
+  paymentMethod          String?             // X402, ATLOS, etc.
+  blockchainNetwork      String?             // base, ethereum, solana, etc.
   totalCredits           Float
   creditUsage            Float
   subscriptionRefId      String?
@@ -464,12 +472,10 @@ enum SubscriptionStatus {
 
 enum SubscriptionTier {
   FREE
-  STARTER_REALM
-  INDIE_BUILDER
-  MASTER_CREATOR
-  DEV_STUDIO
-  PRODUCTION_STUDIO
-  WORLD_ARCHITECT
+  STARTER
+  CREATOR
+  PRO
+  STUDIO
 }
 
 enum BillingPeriod {
@@ -543,7 +549,7 @@ model Enable3Redemption {
   id             String                  @id @default(cuid())
   userId         String
   transactionId  String                  @unique // Enable3 transaction ID (idempotency key)
-  tokenAmount    Float                   // LFR points redeemed
+  tokenAmount    Float                   // FRG points redeemed
   creditsAwarded Float                   // Credits given to user
   tokenRate      Float                   // Exchange rate at time of redemption
   usdcAmount     Float?                  // USDC equivalent (from Enable3)

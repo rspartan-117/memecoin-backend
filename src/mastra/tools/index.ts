@@ -6,3 +6,4 @@
 export * from './research-meme-coin.tool';
 export * from './get-stored-report.tool';
 export * from './refresh-coin-data.tool';
+export * from './web-search.tool';

@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../shared/services/prisma.service';
-import { GameGenCreditService } from './game-gen-credit.service';
+import { CreditService } from './credit.service';
 
 interface E2bWebhook {
   id: string;
@@ -70,7 +70,7 @@ export class E2bWebhookService implements OnModuleInit {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
-    private readonly gameGenCreditService: GameGenCreditService,
+    private readonly creditService: CreditService,
   ) {
     this.e2bApiKey = this.configService.getOrThrow<string>('E2B_API_KEY');
     this.selfDomain = this.configService.getOrThrow<string>('SELF_DOMAIN', '');
@@ -384,8 +384,7 @@ export class E2bWebhookService implements OnModuleInit {
         `Processing sandbox charge: ${creditsToDeduct} credits for user ${userId}`,
       );
 
-      // Use the game-specific credit service to process the charge
-      await this.gameGenCreditService.processSandboxCharge({
+      await this.creditService.processSandboxCharge({
         userId,
         projectId,
         sandboxId,

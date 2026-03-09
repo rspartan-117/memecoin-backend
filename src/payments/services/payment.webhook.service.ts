@@ -821,8 +821,8 @@ export class PaymentsWebhookService implements OnModuleInit {
     user: any,
     body?: any,
   ): Promise<void> {
-    // Check if this is a subscription
-    if (body?.description === 'UPGRADE_TO_BUSINESS') {
+    // Check if this is a plan upgrade (description flag set by frontend)
+    if (body?.description === 'SUBSCRIPTION_UPGRADE') {
       await this.handleSubscriptionUpgrade(transaction, user, body);
       return;
     }
@@ -912,7 +912,7 @@ export class PaymentsWebhookService implements OnModuleInit {
   }
 
   /**
-   * Handle subscription upgrade from Professional to Business plan
+   * Handle subscription upgrade from any tier to a higher tier
    */
   private async handleSubscriptionUpgrade(
     transaction: any,
@@ -1079,7 +1079,7 @@ export class PaymentsWebhookService implements OnModuleInit {
     });
 
     this.logger.log(
-      `Successfully upgraded user ${user.id} from PROFESSIONAL to BUSINESS plan. ` +
+      `Successfully upgraded user ${user.id} from ${currentSubscription.subscriptionPlan} to ${targetSubscriptionPlan}. ` +
         `New total credits: ${totalCreditsToSet}, Credits added: ${Math.round(creditsAdded)}`,
     );
   }

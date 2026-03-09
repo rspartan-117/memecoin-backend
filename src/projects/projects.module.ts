@@ -16,6 +16,7 @@ import { AssetsService } from './services/assets.service';
 import { E2bWebhookService } from './services/e2b-webhook.service';
 import { FilesService } from './services/files.service';
 import { SharedModule } from '../shared/shared.module';
+import { DeploymentModule } from '../deployment/deployment.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { SharedModule } from '../shared/shared.module';
     }),
     ConfigModule,
     SharedModule,
+    DeploymentModule,
   ],
   controllers: [
     ProjectsController,
@@ -51,7 +53,7 @@ import { SharedModule } from '../shared/shared.module';
     DownloadService,
     AssetsService,
     E2bWebhookService,
-    // GameGenCreditService is now provided and exported by SharedModule
+    // CreditService is now provided and exported by SharedModule
   ],
 })
 export class ProjectsModule {}

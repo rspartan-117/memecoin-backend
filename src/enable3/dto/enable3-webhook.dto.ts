@@ -27,7 +27,7 @@ export class Enable3WithdrawalDto {
   @IsNumber()
   amount: number;
 
-  @ApiProperty({ description: 'Amount in OBOE tokens (loyalty points)' })
+  @ApiProperty({ description: 'Amount in FRG tokens (loyalty points)' })
   @IsNumber()
   tokenAmount: number;
 

@@ -5,10 +5,13 @@ import {
   HttpStatus,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
+import { Octokit } from 'octokit';
 import { PrismaService } from '../../shared/services/prisma.service';
 import { SandboxService } from './sandbox.service';
 import { AssetsService } from './assets.service';
+import { DeployService } from '../../deployment/services/deploy.service';
 import {
   CreateProjectDto,
   ProjectResponseDto,
@@ -52,12 +55,25 @@ interface ProjectMetadata {
 @Injectable()
 export class ProjectsService {
   private readonly logger = new Logger(ProjectsService.name);
+  private readonly githubToken: string | null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly sandboxService: SandboxService,
     private readonly assetsService: AssetsService,
-  ) {}
+    private readonly deployService: DeployService,
+    private readonly configService: ConfigService,
+  ) {
+    this.githubToken =
+      process.env.GITHUB_TOKEN ||
+      this.configService.get<string>('GITHUB_TOKEN') ||
+      null;
+    if (!this.githubToken) {
+      this.logger.warn(
+        'GITHUB_TOKEN not set — GitHub repo cleanup on project delete will be skipped',
+      );
+    }
+  }
 
   /**
    * Generate a new project ID
@@ -320,7 +336,13 @@ export class ProjectsService {
   }
 
   /**
-   * Delete a project
+   * Delete a project and tear down ALL associated resources:
+   *   1. Deployment cloud resources (Koyeb app + SaaS Custom Domain)
+   *   2. GitHub repositories (deployment's + project's own)
+   *   3. E2B sandbox
+   *   4. S3 assets
+   *   5. MongoDB conversation history
+   *   6. PostgreSQL records (cascade: Deployment, ProjectFile, ProjectThought, Asset)
    */
   async deleteProject(
     projectId: string,
@@ -329,13 +351,58 @@ export class ProjectsService {
     this.logger.log(`Deleting project ${projectId} for user ${userId}`);
 
     // 1. Verify project exists and belongs to user
-    await this.findOne(projectId, userId);
+    const project = await this.prisma.project.findFirst({
+      where: { id: projectId, userId },
+    });
+
+    if (!project) {
+      throw new NotFoundException('Project not found');
+    }
 
     let sandboxCleanupStatus: 'completed' | 'deferred' | 'failed' = 'deferred';
     let assetsCleanupStatus: 'completed' | 'failed' = 'completed';
+    let deploymentCleanupStatus: 'completed' | 'skipped' | 'failed' = 'skipped';
 
+    // 2. Tear down deployment cloud resources (Koyeb app + SaaS Custom Domain)
+    const deployment = await this.prisma.deployment.findFirst({
+      where: { projectId },
+    });
+
+    if (deployment && deployment.status !== 'DELETED') {
+      try {
+        await this.deployService.terminateDeploymentById({
+          id: deployment.id,
+          frontendAppName: deployment.frontendAppName,
+          saascdUpstreamUuid: deployment.saascdUpstreamUuid,
+          saascdDomainUuid: deployment.saascdDomainUuid,
+        });
+        deploymentCleanupStatus = 'completed';
+        this.logger.log(
+          `Deployment ${deployment.id} cloud resources torn down`,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Deployment teardown failed, continuing with project deletion: ${error.message}`,
+        );
+        deploymentCleanupStatus = 'failed';
+      }
+
+      // Delete deployment's GitHub repo
+      if (deployment.githubRepoUrl) {
+        await this.deleteGithubRepo(deployment.githubRepoUrl);
+      }
+    }
+
+    // 3. Delete project's own GitHub repo (if different from deployment's)
+    if (
+      project.githubRepoUrl &&
+      project.githubRepoUrl !== deployment?.githubRepoUrl
+    ) {
+      await this.deleteGithubRepo(project.githubRepoUrl);
+    }
+
+    // 4. Attempt to delete/cleanup E2B sandbox via Sandbox Service
     try {
-      // 2. Attempt to delete/cleanup sandbox via Sandbox Service
       const sandboxResult = await this.sandboxService.deleteSandbox(projectId);
       sandboxCleanupStatus = sandboxResult.success ? 'deferred' : 'failed';
     } catch (error) {
@@ -345,8 +412,8 @@ export class ProjectsService {
       sandboxCleanupStatus = 'failed';
     }
 
+    // 5. Delete all project assets from S3
     try {
-      // 3. Delete all project assets from S3
       await this.assetsService.deleteAllProjectAssets(projectId, userId);
       this.logger.log(`Deleted all assets for project ${projectId}`);
     } catch (error) {
@@ -356,8 +423,8 @@ export class ProjectsService {
       assetsCleanupStatus = 'failed';
     }
 
+    // 6. Delete conversation history from MongoDB (checkpoints)
     try {
-      // 4. Delete conversation history from MongoDB (checkpoints)
       await this.sandboxService.deleteProjectHistory(projectId);
       this.logger.log(`Deleted conversation history for project ${projectId}`);
     } catch (error) {
@@ -366,11 +433,15 @@ export class ProjectsService {
       );
     }
 
+    // 7. Delete from DB (cascade handles Deployment, ProjectFile, ProjectThought, Asset records)
     try {
-      // 5. Delete from DB (cascade will handle related records)
       await this.prisma.project.delete({
         where: { id: projectId },
       });
+
+      this.logger.log(
+        `Project ${projectId} fully deleted (deployment + sandbox + assets + history + DB)`,
+      );
 
       return {
         success: true,
@@ -379,6 +450,7 @@ export class ProjectsService {
         deleted_at: new Date(),
         sandbox_cleanup_status: sandboxCleanupStatus,
         assets_cleanup_status: assetsCleanupStatus,
+        deployment_cleanup_status: deploymentCleanupStatus,
       };
     } catch (error) {
       this.logger.error(
@@ -388,6 +460,33 @@ export class ProjectsService {
       throw new HttpException(
         `Failed to delete project: ${error.message}`,
         error.response?.status || HttpStatus.BAD_GATEWAY,
+      );
+    }
+  }
+
+  /**
+   * Delete a GitHub repository by URL.
+   * Non-throwing — logs warnings on failure so the rest of the deletion can proceed.
+   */
+  private async deleteGithubRepo(repoUrl: string): Promise<void> {
+    if (!this.githubToken) {
+      this.logger.warn(
+        `Skipping GitHub repo deletion — GITHUB_TOKEN not configured`,
+      );
+      return;
+    }
+    try {
+      const octokit = new Octokit({ auth: this.githubToken });
+      const urlParts = repoUrl.replace(/\.git$/, '').split('/');
+      const repo = urlParts.pop();
+      const owner = urlParts.pop();
+      if (owner && repo) {
+        await octokit.request('DELETE /repos/{owner}/{repo}', { owner, repo });
+        this.logger.log(`GitHub repo ${owner}/${repo} deleted`);
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Failed to delete GitHub repo ${repoUrl}: ${err.message}`,
       );
     }
   }

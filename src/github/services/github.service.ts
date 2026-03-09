@@ -31,13 +31,11 @@ export class GithubService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
   ) {
-    this.clientId = this.configService.getOrThrow<string>('GITHUB_CLIENT_ID');
-    this.clientSecret = this.configService.getOrThrow<string>(
-      'GITHUB_CLIENT_SECRET',
-    );
-    this.redirectUri = this.configService.getOrThrow<string>(
-      'GITHUB_REDIRECT_URI',
-    );
+    this.clientId = this.configService.get<string>('GITHUB_CLIENT_ID') || '';
+    this.clientSecret =
+      this.configService.get<string>('GITHUB_CLIENT_SECRET') || '';
+    this.redirectUri =
+      this.configService.get<string>('GITHUB_REDIRECT_URI') || '';
 
     this.zipStorageDir = path.resolve(process.cwd(), 'zipstorage');
     this.unzipStorageDir = path.resolve(process.cwd(), 'unzipstorage');

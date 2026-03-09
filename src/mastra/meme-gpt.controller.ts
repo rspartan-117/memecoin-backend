@@ -7,6 +7,7 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Body,
   Param,
   UseGuards,
@@ -14,7 +15,10 @@ import {
   Sse,
   MessageEvent,
   BadRequestException,
+  ConflictException,
   Logger,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -196,5 +200,54 @@ export class MemeGptController {
       sessions,
       count: sessions.length,
     };
+  }
+
+  /**
+   * DELETE /meme-gpt/sessions/:sessionId
+   * Delete a session and all its related conversations and reports.
+   */
+  @Delete('sessions/:sessionId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Delete a session and all related data',
+    description:
+      'Permanently deletes a Meme GPT session along with its conversations and reports. ' +
+      'Cannot delete a session that is currently streaming.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Session deleted successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        deleted: { type: 'boolean', example: true },
+        sessionId: {
+          type: 'string',
+          example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 404, description: 'Session not found' })
+  @ApiResponse({
+    status: 409,
+    description: 'Session is currently streaming and cannot be deleted',
+  })
+  async deleteSession(
+    @Req() req: any,
+    @Param('sessionId') sessionId: string,
+  ) {
+    const userId = req.user;
+    try {
+      return await this.memeGptService.deleteSession(sessionId, userId);
+    } catch (error: any) {
+      if (error?.message?.includes('actively streaming')) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
   }
 }

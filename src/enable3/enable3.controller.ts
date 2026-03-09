@@ -102,7 +102,7 @@ export class Enable3Controller {
 
         this.logger.debug(`User ID: ${dto.userId}`);
         this.logger.debug(`Transaction ID: ${dto.transactionId}`);
-        this.logger.debug(`Token Amount: ${dto.tokenAmount} OBOE`);
+        this.logger.debug(`Token Amount: ${dto.tokenAmount} FRG`);
 
         try {
             // Get raw body for signature verification
